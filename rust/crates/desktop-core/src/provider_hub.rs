@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::process::{Command, Stdio};
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::codex_auth::{has_chatgpt_tokens, parse_chatgpt_jwt_claims, read_auth_payload};
 use reqwest::blocking::{Client, Response};
@@ -17,6 +21,12 @@ const DEFAULT_OPENCLAW_CONFIG_FILE: &str = "openclaw.json";
 const ALTERNATE_OPENCLAW_CONFIG_FILE: &str = "config.json";
 const DEFAULT_CODEX_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CODEX_AUTH_FILE: &str = "auth.json";
+const CODEX_MODEL_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(30);
+const CODEX_MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
+const CODEX_APP_SERVER_INITIALIZE_ID: u64 = 1;
+const CODEX_APP_SERVER_MODEL_LIST_ID: u64 = 2;
+
+static CODEX_OPENAI_MODELS_CACHE: OnceLock<Mutex<Option<CachedCodexModels>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -220,6 +230,12 @@ struct ProviderHubStore {
     providers: Vec<StoredManagedProvider>,
 }
 
+#[derive(Debug, Clone)]
+struct CachedCodexModels {
+    fetched_at: Instant,
+    models: Vec<DesktopProviderModel>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct StoredManagedProvider {
     id: String,
@@ -258,6 +274,43 @@ struct CodexLiveProviderEntry {
     requires_openai_auth: bool,
     model: Option<String>,
     is_active: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexAppServerInitializeResult {
+    #[serde(default)]
+    _user_agent: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexAppServerModelListResult {
+    data: Vec<CodexAppServerModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexAppServerModelEntry {
+    id: String,
+    model: Option<String>,
+    display_name: Option<String>,
+    description: Option<String>,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    supported_reasoning_efforts: Vec<CodexAppServerReasoningEffort>,
+    #[serde(default)]
+    input_modalities: Vec<String>,
+    #[serde(default)]
+    is_default: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexAppServerReasoningEffort {
+    #[serde(rename = "reasoningEffort")]
+    _reasoning_effort: String,
 }
 
 impl StoredManagedProvider {
@@ -544,64 +597,7 @@ pub fn provider_presets() -> Vec<DesktopProviderPreset> {
             Some("OpenAI 官方服务，仅支持通过 Codex 登录态同步到 ~/.codex 配置。"),
             Some("openai"),
             Some("#00A67E"),
-            vec![
-                model(
-                    "gpt-5",
-                    "GPT 5",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["general", "coding", "reasoning"],
-                ),
-                model(
-                    "gpt-5-mini",
-                    "GPT 5 Mini",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["general", "coding"],
-                ),
-                model(
-                    "gpt-5-nano",
-                    "GPT 5 Nano",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["general"],
-                ),
-                model(
-                    "gpt-5-pro",
-                    "GPT 5 Pro",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["reasoning", "coding"],
-                ),
-                model(
-                    "gpt-5-chat",
-                    "GPT 5 Chat",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["general"],
-                ),
-                model(
-                    "gpt-5.1",
-                    "GPT 5.1",
-                    Some(200000),
-                    Some(16384),
-                    Some("paid"),
-                    &["general", "coding", "reasoning"],
-                ),
-                model(
-                    "gpt-image-1",
-                    "GPT Image",
-                    Some(32000),
-                    Some(8192),
-                    Some("paid"),
-                    &["image"],
-                ),
-            ],
+            codex_openai_models(),
         ),
         preset(
             "custom-openai",
@@ -1637,6 +1633,10 @@ fn read_provider_store(project_path: &str) -> Result<ProviderHubStore, String> {
             path.display()
         )
     })?;
+    let mut store = store;
+    if migrate_provider_store(&mut store) {
+        write_provider_store(project_path, &store)?;
+    }
     Ok(store)
 }
 
@@ -1664,6 +1664,365 @@ fn provider_hub_path(project_path: &str) -> PathBuf {
     let cwd = Path::new(project_path);
     let loader = ConfigLoader::default_for(cwd);
     loader.config_home().join(PROVIDER_HUB_FILE)
+}
+
+fn migrate_provider_store(store: &mut ProviderHubStore) -> bool {
+    let codex_catalog = codex_openai_models();
+    let mut changed = false;
+
+    for provider in &mut store.providers {
+        if !is_codex_openai_provider(provider) {
+            continue;
+        }
+
+        let merged_models = merge_codex_catalog_models(&provider.models, &codex_catalog);
+        if provider.models != merged_models {
+            provider.models = merged_models;
+            provider.updated_at_epoch = now_unix_i64();
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn is_codex_openai_provider(provider: &StoredManagedProvider) -> bool {
+    provider.provider_type == "codex_openai"
+        || provider.preset_id.as_deref() == Some("codex-openai")
+        || provider.id == "codex-openai"
+}
+
+fn merge_codex_catalog_models(
+    existing_models: &[DesktopProviderModel],
+    catalog_models: &[DesktopProviderModel],
+) -> Vec<DesktopProviderModel> {
+    let mut merged = Vec::new();
+
+    if let Some(default_model_id) = existing_models.first().map(|model| model.model_id.as_str()) {
+        if let Some(default_model) = catalog_models
+            .iter()
+            .find(|model| model.model_id == default_model_id)
+        {
+            merged.push(default_model.clone());
+        }
+    }
+
+    for model in catalog_models {
+        if merged
+            .iter()
+            .any(|existing| existing.model_id == model.model_id)
+        {
+            continue;
+        }
+        merged.push(model.clone());
+    }
+
+    merged
+}
+
+fn codex_openai_models() -> Vec<DesktopProviderModel> {
+    let cache = CODEX_OPENAI_MODELS_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.fetched_at.elapsed() < CODEX_MODEL_DISCOVERY_CACHE_TTL {
+                return cached.models.clone();
+            }
+        }
+    }
+
+    let models = match discover_codex_openai_models_with_timeout() {
+        Ok(models) if !models.is_empty() => models,
+        _ => static_codex_openai_models(),
+    };
+
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some(CachedCodexModels {
+            fetched_at: Instant::now(),
+            models: models.clone(),
+        });
+    }
+
+    models
+}
+
+fn static_codex_openai_models() -> Vec<DesktopProviderModel> {
+    vec![
+        model(
+            "gpt-5.4",
+            "GPT-5.4",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        ),
+        model(
+            "gpt-5.4-mini",
+            "GPT-5.4-Mini",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        ),
+        model(
+            "gpt-5.3-codex",
+            "GPT-5.3-Codex",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        ),
+        model(
+            "gpt-5.3-codex-spark",
+            "GPT-5.3-Codex-Spark",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "fast"],
+        ),
+        model(
+            "gpt-5.2-codex",
+            "GPT-5.2-Codex",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        ),
+        model(
+            "gpt-5.2",
+            "GPT-5.2",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["general", "reasoning"],
+        ),
+        model(
+            "gpt-5.1-codex-max",
+            "GPT-5.1-Codex-Max",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        ),
+        model(
+            "gpt-5.1-codex-mini",
+            "GPT-5.1-Codex-Mini",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding"],
+        ),
+    ]
+}
+
+fn discover_codex_openai_models_with_timeout() -> Result<Vec<DesktopProviderModel>, String> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(discover_codex_openai_models_once());
+    });
+
+    match rx.recv_timeout(CODEX_MODEL_DISCOVERY_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            Err("timed out while querying Codex app-server model/list".to_string())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("Codex app-server model discovery worker disconnected".to_string())
+        }
+    }
+}
+
+fn discover_codex_openai_models_once() -> Result<Vec<DesktopProviderModel>, String> {
+    let mut child = Command::new("codex")
+        .arg("app-server")
+        .arg("--listen")
+        .arg("stdio://")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("spawn codex app-server failed: {error}"))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "codex app-server stdin unavailable".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "codex app-server stdout unavailable".to_string())?;
+    let mut reader = BufReader::new(stdout);
+
+    write_codex_app_server_request(
+        &mut stdin,
+        CODEX_APP_SERVER_INITIALIZE_ID,
+        "initialize",
+        json!({
+            "clientInfo": {
+                "name": "warwolf",
+                "version": env!("CARGO_PKG_VERSION"),
+            }
+        }),
+    )?;
+    let initialize_result =
+        read_codex_app_server_result(&mut reader, CODEX_APP_SERVER_INITIALIZE_ID)?;
+    let _: CodexAppServerInitializeResult = serde_json::from_value(initialize_result)
+        .map_err(|error| format!("parse codex app-server initialize result failed: {error}"))?;
+
+    write_codex_app_server_request(
+        &mut stdin,
+        CODEX_APP_SERVER_MODEL_LIST_ID,
+        "model/list",
+        json!({
+            "limit": 100,
+            "includeHidden": false,
+        }),
+    )?;
+    let model_list_result =
+        read_codex_app_server_result(&mut reader, CODEX_APP_SERVER_MODEL_LIST_ID)?;
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+
+    let payload = serde_json::from_value::<CodexAppServerModelListResult>(model_list_result)
+        .map_err(|error| format!("parse codex app-server model/list result failed: {error}"))?;
+
+    let models = payload
+        .data
+        .into_iter()
+        .filter(|entry| !entry.hidden)
+        .map(codex_model_entry_to_provider_model)
+        .collect::<Vec<_>>();
+
+    if models.is_empty() {
+        return Err("Codex app-server returned an empty model list".to_string());
+    }
+
+    Ok(models)
+}
+
+fn write_codex_app_server_request(
+    stdin: &mut impl Write,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Result<(), String> {
+    let payload = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+    let encoded = serde_json::to_string(&payload)
+        .map_err(|error| format!("serialize codex app-server request failed: {error}"))?;
+    stdin
+        .write_all(encoded.as_bytes())
+        .and_then(|_| stdin.write_all(b"\n"))
+        .and_then(|_| stdin.flush())
+        .map_err(|error| format!("write codex app-server request failed: {error}"))
+}
+
+fn read_codex_app_server_result(
+    reader: &mut impl BufRead,
+    request_id: u64,
+) -> Result<Value, String> {
+    loop {
+        let mut line = String::new();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|error| format!("read codex app-server response failed: {error}"))?;
+        if bytes == 0 {
+            return Err(format!(
+                "codex app-server closed before responding to request {request_id}"
+            ));
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let payload = serde_json::from_str::<Value>(trimmed).map_err(|error| {
+            format!("parse codex app-server response failed: {error}; line={trimmed}")
+        })?;
+        if payload.get("id").and_then(Value::as_u64) != Some(request_id) {
+            continue;
+        }
+        if let Some(error) = payload.get("error") {
+            return Err(format!(
+                "codex app-server request {request_id} failed: {error}"
+            ));
+        }
+        if let Some(result) = payload.get("result") {
+            return Ok(result.clone());
+        }
+        return Err(format!(
+            "codex app-server response for request {request_id} did not contain a result"
+        ));
+    }
+}
+
+fn codex_model_entry_to_provider_model(entry: CodexAppServerModelEntry) -> DesktopProviderModel {
+    let model_id = entry.model.clone().unwrap_or(entry.id.clone());
+    let display_name = normalize_codex_model_display_name(entry.display_name.as_deref(), &model_id);
+    let mut capability_tags = Vec::new();
+    let description = entry.description.unwrap_or_default().to_lowercase();
+
+    if description.contains("coding") || description.contains("codex") {
+        capability_tags.push("coding".to_string());
+    }
+    if !entry.supported_reasoning_efforts.is_empty()
+        && (entry.supported_reasoning_efforts.len() > 1 || description.contains("reason"))
+    {
+        capability_tags.push("reasoning".to_string());
+    }
+    if entry
+        .input_modalities
+        .iter()
+        .any(|modality| modality.eq_ignore_ascii_case("image"))
+    {
+        capability_tags.push("image".to_string());
+    }
+    if capability_tags.is_empty() || entry.is_default {
+        capability_tags.insert(0, "general".to_string());
+    }
+    capability_tags.dedup();
+
+    DesktopProviderModel {
+        model_id,
+        display_name,
+        context_window: None,
+        max_output_tokens: None,
+        billing_kind: Some("paid".to_string()),
+        capability_tags,
+    }
+}
+
+fn normalize_codex_model_display_name(display_name: Option<&str>, model_id: &str) -> String {
+    if let Some(display_name) = display_name {
+        let trimmed = display_name.trim();
+        if !trimmed.is_empty() && trimmed != model_id {
+            return trimmed.to_string();
+        }
+    }
+
+    model_id
+        .split('-')
+        .map(|part| {
+            if part.eq_ignore_ascii_case("gpt") {
+                return "GPT".to_string();
+            }
+            if part.chars().all(|ch| ch.is_ascii_digit() || ch == '.') {
+                return part.to_string();
+            }
+            let mut chars = part.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+        })
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 fn preset(
@@ -2390,4 +2749,71 @@ fn title_case_provider_name(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_codex_catalog_models_preserves_existing_default() {
+        let existing = vec![model(
+            "gpt-5.4",
+            "GPT-5.4",
+            Some(200000),
+            Some(16384),
+            Some("paid"),
+            &["coding", "reasoning"],
+        )];
+        let catalog = vec![
+            model(
+                "gpt-5.4",
+                "GPT-5.4",
+                Some(200000),
+                Some(16384),
+                Some("paid"),
+                &["coding", "reasoning"],
+            ),
+            model(
+                "gpt-5.4-mini",
+                "GPT-5.4-Mini",
+                Some(200000),
+                Some(16384),
+                Some("paid"),
+                &["coding"],
+            ),
+            model(
+                "gpt-5.3-codex",
+                "GPT-5.3-Codex",
+                Some(200000),
+                Some(16384),
+                Some("paid"),
+                &["coding", "reasoning"],
+            ),
+        ];
+
+        let merged = merge_codex_catalog_models(&existing, &catalog);
+        let ids = merged
+            .iter()
+            .map(|entry| entry.model_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, vec!["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"]);
+    }
+
+    #[test]
+    fn normalize_codex_model_display_name_humanizes_model_id() {
+        assert_eq!(
+            normalize_codex_model_display_name(Some("gpt-5.4"), "gpt-5.4"),
+            "GPT-5.4"
+        );
+        assert_eq!(
+            normalize_codex_model_display_name(None, "gpt-5.3-codex-spark"),
+            "GPT-5.3-Codex-Spark"
+        );
+        assert_eq!(
+            normalize_codex_model_display_name(Some("GPT-5.4-Mini"), "gpt-5.4-mini"),
+            "GPT-5.4-Mini"
+        );
+    }
 }
