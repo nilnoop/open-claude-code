@@ -1,15 +1,27 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Loader2, Terminal, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Loader2,
+  Terminal,
+  FileEdit,
+  Search,
+  Globe,
+  Code2,
+  Zap,
+  MessageSquare,
+  Play,
+} from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ContentHeader } from "./ContentHeader";
 import { MessageItem } from "./MessageItem";
 import { InputBar } from "./InputBar";
+import { StatusLine } from "./StatusLine";
 import type {
   ContentBlock,
   DesktopSessionDetail,
   RuntimeConversationMessage,
 } from "@/lib/tauri";
 import type { ConversationMessage } from "@/store/slices/sessions";
+import { MOCK_DEMO_MESSAGES } from "./mockDemoMessages";
 
 interface SessionWorkbenchTerminalProps {
   session: DesktopSessionDetail | null;
@@ -18,13 +30,9 @@ interface SessionWorkbenchTerminalProps {
   errorMessage?: string;
   onSend: (message: string) => void | Promise<void>;
   onStop?: () => void;
-  /** Model label for ContentHeader + InputBar */
   modelLabel?: string;
-  /** Permission mode label for InputBar */
   permissionModeLabel?: string;
-  /** Environment label for ContentHeader + InputBar */
   environmentLabel?: string;
-  /** Project path for ContentHeader */
   projectPath?: string;
 }
 
@@ -41,21 +49,22 @@ export function SessionWorkbenchTerminal({
   projectPath,
 }: SessionWorkbenchTerminalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showDemo, setShowDemo] = useState(false);
   const messages = useMemo(
     () => flattenSessionMessages(session?.session.messages ?? []),
     [session?.session.messages]
   );
+  const displayMessages = messages.length > 0 ? messages : showDemo ? MOCK_DEMO_MESSAGES : [];
   const isRunning = session?.turn_state === "running" || isSending;
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isRunning]);
+  }, [displayMessages, isRunning]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* ContentHeader — transparent, merges with content */}
       <ContentHeader
         projectPath={projectPath}
         modelLabel={modelLabel}
@@ -63,32 +72,43 @@ export function SessionWorkbenchTerminal({
         isStreaming={isRunning}
       />
 
-      {messages.length === 0 && !isLoadingSession ? (
-          <SessionWorkbenchWelcomeScreen />
+      {displayMessages.length === 0 && !isLoadingSession ? (
+        <WelcomeScreen onShowDemo={() => setShowDemo(true)} />
       ) : (
         <ScrollArea className="flex-1">
           <div ref={scrollRef} className="pb-4">
+            {showDemo && (
+              <div className="mx-4 mb-2 mt-1 flex items-center justify-between rounded-lg border border-border/30 bg-muted/10 px-3 py-1.5">
+                <span className="text-[11px] text-muted-foreground">
+                  Demo mode — showing sample conversation
+                </span>
+                <button
+                  className="text-[11px] font-medium text-foreground hover:underline"
+                  onClick={() => setShowDemo(false)}
+                >
+                  Exit demo
+                </button>
+              </div>
+            )}
             {isLoadingSession && (
-              <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 <span>Loading session...</span>
               </div>
             )}
-            {messages.map((msg) => (
+            {displayMessages.map((msg) => (
               <MessageItem key={msg.id} message={msg} />
             ))}
-            {isRunning && (
-              <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-                <div className="flex gap-1">
-                  <span className="animate-bounce delay-0">.</span>
-                  <span className="animate-bounce delay-150">.</span>
-                  <span className="animate-bounce delay-300">.</span>
-                </div>
-                <span>Thinking</span>
-              </div>
-            )}
+            {isRunning && <StreamingSpinner />}
             {errorMessage && (
-              <div className="mx-4 mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <div
+                className="mx-4 mt-3 rounded-lg border px-3 py-2 text-[12px]"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--color-error, rgb(171,43,63)) 30%, transparent)",
+                  backgroundColor: "color-mix(in srgb, var(--color-error, rgb(171,43,63)) 5%, transparent)",
+                  color: "var(--color-error, rgb(171,43,63))",
+                }}
+              >
                 {errorMessage}
               </div>
             )}
@@ -103,64 +123,154 @@ export function SessionWorkbenchTerminal({
         permissionModeLabel={permissionModeLabel}
         environmentLabel={environmentLabel}
       />
+
+      <StatusLine
+        modelLabel={modelLabel}
+        permissionMode={permissionModeLabel}
+        environmentLabel={environmentLabel}
+        isRunning={isRunning}
+      />
     </div>
   );
 }
 
-function SessionWorkbenchWelcomeScreen() {
+/* ─── Streaming Spinner with shimmer ─────────────────────────────── */
+
+function StreamingSpinner() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-        <Sparkles className="size-8 text-primary" />
-      </div>
-      <div className="text-center">
-        <h2 className="mb-2 text-lg font-semibold text-foreground">
-          Warwolf Code
-        </h2>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Claude Code style desktop workspace powered by the Rust runtime.
-          Start a session or just type below to let the desktop client create
-          one for you.
-        </p>
-      </div>
-      <div className="grid max-w-lg grid-cols-2 gap-3">
-        {[
-          {
-            icon: Terminal,
-            title: "Run Commands",
-            desc: "Execute shell commands and scripts",
-          },
-          {
-            icon: Terminal,
-            title: "Edit Files",
-            desc: "Read, write, and modify code files",
-          },
-          {
-            icon: Terminal,
-            title: "Search Code",
-            desc: "Find files and patterns in your codebase",
-          },
-          {
-            icon: Terminal,
-            title: "MCP Tools",
-            desc: "Use connected MCP server tools",
-          },
-        ].map((item) => (
-          <div
-            key={item.title}
-            className="rounded-lg border border-border/50 bg-muted/20 p-3"
-          >
-            <item.icon className="mb-2 size-4 text-muted-foreground" />
-            <div className="text-xs font-medium">{item.title}</div>
-            <div className="text-[10px] text-muted-foreground">
-              {item.desc}
-            </div>
-          </div>
-        ))}
+    <div className="mx-4 my-2">
+      <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-muted/10 px-4 py-3">
+        {/* Shimmer dots */}
+        <div className="flex items-center gap-1">
+          <ShimmerDot delay={0} />
+          <ShimmerDot delay={150} />
+          <ShimmerDot delay={300} />
+        </div>
+        <span className="text-[13px] text-muted-foreground">
+          Thinking...
+        </span>
       </div>
     </div>
   );
 }
+
+function ShimmerDot({ delay }: { delay: number }) {
+  return (
+    <span
+      className="inline-block size-1.5 rounded-full animate-pulse"
+      style={{
+        backgroundColor: "var(--claude-orange, rgb(215,119,87))",
+        animationDelay: `${delay}ms`,
+      }}
+    />
+  );
+}
+
+/* ─── Welcome Screen ─────────────────────────────────────────────── */
+
+function WelcomeScreen({ onShowDemo }: { onShowDemo?: () => void }) {
+  const capabilities = [
+    {
+      icon: Terminal,
+      title: "Run Commands",
+      desc: "Execute shell commands, scripts, and build tools",
+      color: "var(--color-terminal-tool, rgb(44,122,57))",
+    },
+    {
+      icon: FileEdit,
+      title: "Edit Files",
+      desc: "Read, write, and modify code with precise diffs",
+      color: "var(--claude-orange, rgb(215,119,87))",
+    },
+    {
+      icon: Search,
+      title: "Search Code",
+      desc: "Find files and patterns across your codebase",
+      color: "var(--claude-blue, rgb(87,105,247))",
+    },
+    {
+      icon: Globe,
+      title: "Web Access",
+      desc: "Fetch URLs and search the web for information",
+      color: "var(--agent-cyan, rgb(8,145,178))",
+    },
+    {
+      icon: Code2,
+      title: "Multi-file Edits",
+      desc: "Coordinate changes across multiple files at once",
+      color: "var(--agent-purple, rgb(147,51,234))",
+    },
+    {
+      icon: Zap,
+      title: "MCP Tools",
+      desc: "Use connected MCP server tools and extensions",
+      color: "var(--color-fast-mode, rgb(255,106,0))",
+    },
+  ];
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6">
+      {/* Logo */}
+      <div className="flex flex-col items-center gap-3">
+        <div
+          className="flex size-14 items-center justify-center rounded-2xl"
+          style={{
+            background: "linear-gradient(135deg, var(--claude-orange, rgb(215,119,87)), var(--claude-orange-shimmer, rgb(245,149,117)))",
+          }}
+        >
+          <MessageSquare className="size-7 text-white" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-foreground">
+            What can I help you with?
+          </h2>
+          <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
+            I can read, write, and run code in your project. Just describe what you need.
+          </p>
+        </div>
+      </div>
+
+      {/* Capabilities grid */}
+      <div className="grid w-full max-w-lg grid-cols-2 gap-2">
+        {capabilities.map((item) => (
+          <div
+            key={item.title}
+            className="flex items-start gap-2.5 rounded-lg border border-border/40 bg-muted/10 p-3 transition-colors hover:bg-muted/20"
+          >
+            <item.icon className="mt-0.5 size-4 shrink-0" style={{ color: item.color }} />
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-foreground">{item.title}</div>
+              <div className="text-[11px] leading-snug text-muted-foreground">{item.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Hint + Demo */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
+          <span>Type</span>
+          <kbd className="rounded border border-border/50 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px]">/</kbd>
+          <span>for commands</span>
+          <span className="mx-1">|</span>
+          <kbd className="rounded border border-border/50 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>
+          <span>to send</span>
+        </div>
+        {onShowDemo && (
+          <button
+            className="flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+            onClick={onShowDemo}
+          >
+            <Play className="size-3" />
+            View demo conversation
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Message flattening ─────────────────────────────────────────── */
 
 function flattenSessionMessages(
   source: RuntimeConversationMessage[]

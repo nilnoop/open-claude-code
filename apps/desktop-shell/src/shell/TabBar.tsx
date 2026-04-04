@@ -67,7 +67,6 @@ export function TabBar() {
   // ─── Derived nav state ────────────────────────────────────────
   const isOnHome = pathname === "/home" || pathname === "/";
   const isOnApps = pathname.startsWith("/apps");
-  const isOnCode = pathname === "/code";
   const isSettingsActive =
     isOnHome && viewMode.kind === "nav" && viewMode.section === "settings";
   const isHomeActive = isOnHome && !isSettingsActive;
@@ -85,31 +84,6 @@ export function TabBar() {
     if (appId.startsWith("openclaw")) return "OpenClaw";
     return appId;
   };
-
-  // ─── Route → tab sync (`/code`) ──────────────────────────────
-  useEffect(() => {
-    if (!isOnCode) return;
-
-    const existingTab = tabs.find((tab) => tab.id === "route:code");
-    if (!existingTab) {
-      dispatch(
-        addTab({
-          id: "route:code",
-          type: "code",
-          path: "/code",
-          title: "Code",
-          closable: true,
-        })
-      );
-      return;
-    }
-
-    if (existingTab.title !== "Code") {
-      dispatch(updateTabTitle({ id: "route:code", title: "Code" }));
-    }
-
-    dispatch(setActiveTab("route:code"));
-  }, [dispatch, isOnCode, tabs]);
 
   // ─── Route → tab sync (minapps only) ─────────────────────────
   useEffect(() => {
@@ -221,7 +195,7 @@ export function TabBar() {
     <div className="flex flex-col">
       {/* ══ Row 1 — Navigation ══════════════════════════════════ */}
       <div
-        className="flex h-9 items-center border-b border-border/50 bg-muted/30"
+        className="flex h-9 items-center border-b border-border/50 bg-muted/20"
         data-tauri-drag-region
       >
         {/* macOS traffic light spacing */}
@@ -332,15 +306,21 @@ function NavButton({
   return (
     <button
       className={cn(
-        "flex h-[26px] items-center gap-1.5 rounded-md px-2 text-[12px] cursor-pointer transition-colors select-none",
+        "relative flex h-[26px] items-center gap-1.5 rounded-md px-2.5 text-[12px] cursor-pointer transition-all select-none",
         active
-          ? "bg-background text-foreground shadow-sm font-medium"
+          ? "bg-background text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.08)] font-medium dark:bg-accent dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
       )}
       onClick={onClick}
     >
       <Icon className="size-3.5" />
       <span>{label}</span>
+      {active && (
+        <span
+          className="absolute bottom-0 left-1/2 h-[2px] w-4 -translate-x-1/2 rounded-full"
+          style={{ backgroundColor: "var(--claude-orange, rgb(215,119,87))" }}
+        />
+      )}
     </button>
   );
 }

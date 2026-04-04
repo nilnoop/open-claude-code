@@ -14,8 +14,8 @@ export default defineConfig(async () => ({
   },
   clearScreen: false,
   server: {
-    port: 1420,
-    strictPort: true,
+    port: parseInt(process.env.PORT || "1420", 10),
+    strictPort: false,
     host: host || false,
     hmr: host
       ? {

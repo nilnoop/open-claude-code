@@ -5,10 +5,12 @@ import {
   CalendarClock,
   ChevronRight,
   Inbox,
+  MessageSquare,
   PanelLeftClose,
   Plus,
   Search,
   Wrench,
+  Zap,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { getWorkbench } from "@/lib/tauri";
@@ -37,7 +39,6 @@ export function HomePage() {
   const dispatch = useAppDispatch();
   const viewMode = useAppSelector((state) => state.ui.viewMode);
 
-  // Derive legacy-compatible values from unified ViewMode
   const homeSection: NavSection =
     viewMode.kind === "nav" ? viewMode.section : "session";
   const activeHomeSessionId =
@@ -53,22 +54,27 @@ export function HomePage() {
     [workbench]
   );
 
+  const hideSidebar = homeSection === "settings";
+
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-border bg-sidebar-background">
-        <div className="px-3 py-2">
+      {!hideSidebar && (
+      <aside className="flex w-[220px] shrink-0 flex-col border-r border-border bg-sidebar-background">
+        {/* New session button */}
+        <div className="px-2 py-2">
           <Button
             variant="ghost"
-            className="h-8 w-full justify-start gap-2 text-[13px]"
+            className="h-7 w-full justify-start gap-2 text-[12px]"
             onClick={() => openHomeSession(dispatch, null)}
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-3" />
             New session
           </Button>
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="space-y-4 px-2 pb-3">
+          <div className="space-y-3 px-1.5 pb-3">
+            {/* Navigation */}
             <nav className="space-y-0.5">
               {PRIMARY_ITEMS.map((item) => (
                 <HomeRailButton
@@ -81,32 +87,36 @@ export function HomePage() {
               ))}
             </nav>
 
-            <section className="space-y-2">
-              <div className="flex items-center justify-between px-2 text-[11px] text-muted-foreground">
+            {/* Session sections */}
+            <section className="space-y-1.5">
+              <div className="flex items-center justify-between px-2 text-[10px] text-muted-foreground">
                 <span>{workbench?.project_label ?? "All projects"}</span>
                 <PanelLeftClose className="size-3 opacity-40" />
               </div>
 
               {sessionSections.map((section) => (
-                <div key={section.id} className="space-y-1">
-                  <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <div key={section.id} className="space-y-0.5">
+                  <div className="px-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     {section.label}
                   </div>
                   <div className="space-y-0.5">
                     {section.sessions.map((session) => (
                       <button
                         key={session.id}
-                        className="w-full rounded-lg border border-transparent bg-muted/20 px-2.5 py-1.5 text-left transition hover:border-foreground/10 hover:bg-muted/30"
+                        className="w-full rounded-md bg-transparent px-2 py-1.5 text-left transition hover:bg-muted/30"
                         onClick={() => openHomeSession(dispatch, session.id)}
                       >
                         <div className="flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full border border-border bg-background" />
-                          <span className="truncate text-[13px] font-medium text-foreground">
+                          <MessageSquare className="size-3 shrink-0 opacity-30" />
+                          <span className="truncate text-[12px] font-medium text-foreground">
                             {session.title}
                           </span>
+                          {session.turn_state === "running" && (
+                            <Zap className="size-2.5 shrink-0" style={{ color: "var(--claude-orange, rgb(215,119,87))" }} />
+                          )}
                         </div>
-                        <div className="mt-0.5 pl-3 text-[11px] text-muted-foreground">
-                          {truncate(session.preview, 36)}
+                        <div className="mt-0.5 pl-[18px] text-[10px] text-muted-foreground">
+                          {truncate(session.preview, 32)}
                         </div>
                       </button>
                     ))}
@@ -117,41 +127,33 @@ export function HomePage() {
           </div>
         </ScrollArea>
 
-        <div className="border-t border-sidebar-border p-2">
-          <div className="rounded-xl border border-border bg-background p-2.5">
-            <div className="flex items-start gap-2">
-              <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                <BadgeCheck className="size-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-foreground">
-                  Updated to {workbench?.update_banner.version ?? "latest"}
-                </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {workbench?.update_banner.body ?? "Desktop build is ready."}
-                </div>
-              </div>
+        {/* Bottom panel — compact */}
+        <div className="border-t border-sidebar-border px-1.5 py-1.5">
+          <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
+            <div
+              className="flex size-5 shrink-0 items-center justify-center rounded"
+              style={{
+                backgroundColor: "color-mix(in srgb, var(--color-success, rgb(44,122,57)) 12%, transparent)",
+                color: "var(--color-success, rgb(44,122,57))",
+              }}
+            >
+              <BadgeCheck className="size-3" />
             </div>
-            <Button variant="outline" className="mt-2 h-7 w-full text-[12px]">
-              {workbench?.update_banner.cta_label ?? "Relaunch"}
-            </Button>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-background px-2.5 py-2">
-            <div>
-              <div className="text-[13px] font-medium text-foreground">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-medium text-foreground">
                 {workbench?.account.name ?? "Warwolf"}
               </div>
-              <div className="text-[11px] text-muted-foreground">
-                {workbench?.account.plan_label ?? "Desktop"}
+              <div className="text-[9px] text-muted-foreground">
+                {workbench?.account.plan_label ?? "Desktop"} · {workbench?.update_banner.version ?? "latest"}
               </div>
             </div>
-            <div className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            <div className="rounded-full bg-muted px-1.5 py-0.5 text-[8px] uppercase tracking-[0.14em] text-muted-foreground">
               {workbench?.composer.environment_label ?? "Local"}
             </div>
           </div>
         </div>
       </aside>
+      )}
 
       <main className="min-w-0 flex-1 overflow-hidden">
         {homeSection === "overview" ? (
@@ -194,82 +196,89 @@ function HomeOverview() {
     {
       id: "search",
       label: "Search",
-      body: "Search sessions, project history, and transcript content from the local runtime.",
+      body: "Search sessions, project history, and transcript content.",
+      icon: Search,
     },
     {
       id: "scheduled",
       label: "Scheduled",
-      body: "Create and manage local-first scheduled Code tasks.",
+      body: "Create and manage scheduled code tasks.",
+      icon: CalendarClock,
     },
     {
       id: "dispatch",
       label: "Dispatch",
-      body: "Handle inbox continuations and deliver them into active Code sessions.",
+      body: "Handle inbox continuations and deliver them.",
+      icon: Inbox,
     },
     {
       id: "customize",
       label: "Customize",
-      body: "Inspect runtime-backed hooks, MCP servers, and plugins.",
-    },
-    {
-      id: "openclaw",
-      label: "OpenClaw",
-      body: "Provider hub and future clawhub123 integration surface.",
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      body: "Organize model, MCP, display, and data information in the cherry-style layout.",
+      body: "Inspect hooks, MCP servers, and plugins.",
+      icon: Wrench,
     },
   ] as const;
 
   return (
     <div className="h-full overflow-auto bg-background">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-6">
-        <section className="rounded-2xl border border-border bg-muted/20 p-6">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Home
+      <div className="mx-auto flex max-w-4xl flex-col gap-3 px-5 py-5">
+        {/* Welcome header */}
+        <section className="rounded-xl border border-border bg-muted/10 p-5">
+          <div className="flex items-center gap-2">
+            <div
+              className="flex size-8 items-center justify-center rounded-lg"
+              style={{
+                background: "linear-gradient(135deg, var(--claude-orange, rgb(215,119,87)), var(--claude-orange-shimmer, rgb(245,149,117)))",
+              }}
+            >
+              <MessageSquare className="size-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-[15px] font-semibold tracking-tight text-foreground">
+                Warwolf Desktop
+              </h1>
+              <p className="text-[11px] text-muted-foreground">
+                Claude Code style desktop workspace
+              </p>
+            </div>
           </div>
-          <h1 className="mt-2 text-xl font-semibold tracking-tight text-foreground">
-            Claude Code style home workspace
-          </h1>
-          <p className="mt-2 max-w-3xl text-[13px] leading-5 text-muted-foreground">
-            Search, Scheduled, Dispatch, Customize, OpenClaw, and Settings now live inside the Home tab, while the top bar stays trimmed to the cherry-style `首页 / 应用` model.
-          </p>
         </section>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {/* Feature cards */}
+        <div className="grid gap-2 md:grid-cols-2">
           {overviewCards.map((card) => (
             <button
               key={card.id}
-              className="rounded-xl border border-border bg-background p-4 text-left transition hover:border-foreground/20 hover:bg-muted/20"
+              className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 text-left transition hover:border-foreground/15 hover:bg-muted/10"
               onClick={() => dispatch(setViewMode({ kind: "nav", section: card.id as NavSection }))}
             >
-              <div className="text-[13px] font-semibold text-foreground">
-                {card.label}
+              <card.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-foreground">
+                  {card.label}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                  {card.body}
+                </div>
               </div>
-              <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-                {card.body}
-              </div>
-              <div className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-foreground">
-                Open <ChevronRight className="size-3" />
-              </div>
+              <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/50" />
             </button>
           ))}
         </div>
 
-        <section className="rounded-xl border border-border bg-background p-4">
-          <div className="text-[13px] font-semibold text-foreground">Quick start</div>
-          <div className="mt-3 grid gap-2 lg:grid-cols-[0.9fr_1.1fr]">
+        {/* Quick start */}
+        <section className="rounded-lg border border-border bg-background p-3">
+          <div className="text-[12px] font-semibold text-foreground">Quick start</div>
+          <div className="mt-2 grid gap-2 lg:grid-cols-[0.9fr_1.1fr]">
             <Button
-              className="h-8 justify-start gap-2 text-[13px]"
+              className="h-7 justify-start gap-2 text-[12px]"
               onClick={() => openHomeSession(dispatch, null)}
             >
-              <Plus className="size-3.5" />
+              <Plus className="size-3" />
               New Code session
             </Button>
-            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
-              {workbench?.composer.permission_mode_label ?? "Danger full access"} ·{" "}
+            <div className="flex items-center rounded-md border border-border bg-muted/20 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              {workbench?.composer.permission_mode_label ?? "Ask permissions"} ·{" "}
               {workbench?.composer.model_label ?? "Opus 4.6"} ·{" "}
               {workbench?.composer.environment_label ?? "Local"}
             </div>
@@ -295,8 +304,8 @@ function HomeRailButton({
     <button
       className={
         active
-          ? "flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2.5 py-1.5 text-[13px] font-medium text-sidebar-accent-foreground"
-          : "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-sidebar-foreground transition hover:bg-sidebar-accent/50"
+          ? "flex w-full items-center gap-2 rounded-md bg-sidebar-accent px-2 py-1.5 text-[12px] font-medium text-sidebar-accent-foreground"
+          : "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-sidebar-foreground transition hover:bg-sidebar-accent/50"
       }
       onClick={onClick}
     >

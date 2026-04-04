@@ -71,8 +71,11 @@ export function SettingsPage() {
     queryFn: getCustomize,
   });
 
+  // Treat error states as "loaded with null data" — pages have fallback values
   const isLoading =
-    bootstrapQuery.isLoading || settingsQuery.isLoading || customizeQuery.isLoading;
+    (bootstrapQuery.isLoading && !bootstrapQuery.isError) ||
+    (settingsQuery.isLoading && !settingsQuery.isError) ||
+    (customizeQuery.isLoading && !customizeQuery.isError);
   const error = extractErrorMessage(
     bootstrapQuery.error,
     settingsQuery.error,
@@ -81,24 +84,24 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full">
-      <div className="flex w-[220px] shrink-0 flex-col border-r border-border bg-sidebar-background">
-        <div className="px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">设置</h2>
+      <div className="flex w-[200px] shrink-0 flex-col border-r border-border bg-sidebar-background">
+        <div className="px-3 py-2.5">
+          <h2 className="text-[13px] font-semibold text-foreground">设置</h2>
         </div>
         <Separator />
-        <nav className="flex-1 px-2 py-2">
+        <nav className="flex-1 px-1.5 py-1.5">
           {MENU_ITEMS.map((item) => (
             <button
               key={item.id}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors",
+                "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
                 active === item.id
                   ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent/50"
               )}
               onClick={() => setActive(item.id)}
             >
-              <item.icon className="size-4" />
+              <item.icon className="size-3.5" />
               {item.label}
             </button>
           ))}
@@ -108,52 +111,60 @@ export function SettingsPage() {
       <ScrollArea className="flex-1">
         <div
           className={cn(
-            "px-8 py-6",
-            active === "provider" ? "max-w-none px-6" : "mx-auto max-w-3xl"
+            "px-6 py-4",
+            active === "provider" ? "max-w-none px-5" : "mx-auto max-w-3xl"
           )}
         >
-          <h2 className="mb-4 text-lg font-semibold text-foreground">
+          <h2 className="mb-3 text-[15px] font-semibold text-foreground">
             {MENU_ITEMS.find((m) => m.id === active)?.label}
           </h2>
 
-          {isLoading && (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              <span>正在加载桌面设置...</span>
-            </div>
-          )}
-
-          {!isLoading && (
-            <SettingsContent
-              section={active}
-              bootstrap={bootstrapQuery.data}
-              settings={settingsQuery.data?.settings ?? null}
-              customize={customizeQuery.data?.customize ?? null}
-              error={error}
-            />
-          )}
+          <SettingsContent
+            section={active}
+            isLoading={isLoading}
+            bootstrap={bootstrapQuery.data}
+            settings={settingsQuery.data?.settings ?? null}
+            customize={customizeQuery.data?.customize ?? null}
+            error={error}
+          />
         </div>
       </ScrollArea>
     </div>
   );
 }
 
+/** Loading placeholder for sections that depend on backend data */
+function SectionLoading() {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" />
+      <span>正在加载桌面设置...</span>
+    </div>
+  );
+}
+
 function SettingsContent({
   section,
+  isLoading,
   bootstrap,
   settings,
   customize,
   error,
 }: {
   section: SettingsSection;
+  isLoading: boolean;
   bootstrap: DesktopBootstrap | undefined;
   settings: DesktopSettingsState | null;
   customize: DesktopCustomizeState | null;
   error?: string;
 }) {
+  // GeneralSettings uses Redux — no backend needed
+  if (section === "general") return <GeneralSettings />;
+
+  // Other sections need backend data
+  if (isLoading) return <SectionLoading />;
+
   switch (section) {
-    case "general":
-      return <GeneralSettings />;
     case "provider":
       return (
         <ProviderSettings

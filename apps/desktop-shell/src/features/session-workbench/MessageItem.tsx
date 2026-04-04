@@ -1,13 +1,24 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   ChevronDown,
   ChevronRight,
   Terminal as TerminalIcon,
-  FileEdit,
   Search,
   Globe,
   AlertCircle,
   CheckCircle2,
+  Eye,
+  FileText,
+  FolderSearch,
+  Copy,
+  Check,
+  Brain,
+  Pencil,
+  FileCode,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConversationMessage } from "@/store/slices/sessions";
@@ -21,6 +32,8 @@ export function MessageItem({ message }: MessageItemProps) {
     case "text":
       return message.role === "user" ? (
         <UserMessage content={message.content} />
+      ) : message.role === "system" ? (
+        <SystemMessage content={message.content} />
       ) : (
         <AssistantMessage content={message.content} />
       );
@@ -35,13 +48,159 @@ export function MessageItem({ message }: MessageItemProps) {
   }
 }
 
-/**
- * User message — card style with left blue accent bar.
- *
- * Uses design tokens:
- *   --color-msg-user-bg (rgb(240,240,240) light / rgb(55,55,55) dark)
- *   --color-label-you   (rgb(37,99,235) light / rgb(122,180,232) dark)
- */
+/* ─── Markdown renderer ──────────────────────────────────────────── */
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        code({ className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || "");
+          const codeString = String(children).replace(/\n$/, "");
+
+          if (match) {
+            return (
+              <CodeBlock language={match[1]} code={codeString} />
+            );
+          }
+
+          return (
+            <code
+              className="rounded-[3px] bg-muted px-1.5 py-0.5 font-mono text-[12px] text-foreground"
+              {...props}
+            >
+              {children}
+            </code>
+          );
+        },
+        pre({ children }) {
+          return <>{children}</>;
+        },
+        p({ children }) {
+          return <p className="mb-2 last:mb-0">{children}</p>;
+        },
+        ul({ children }) {
+          return <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>;
+        },
+        ol({ children }) {
+          return <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>;
+        },
+        li({ children }) {
+          return <li className="mb-0.5">{children}</li>;
+        },
+        h1({ children }) {
+          return <h1 className="mb-2 mt-3 text-base font-bold first:mt-0">{children}</h1>;
+        },
+        h2({ children }) {
+          return <h2 className="mb-2 mt-3 text-[15px] font-bold first:mt-0">{children}</h2>;
+        },
+        h3({ children }) {
+          return <h3 className="mb-1.5 mt-2.5 text-sm font-semibold first:mt-0">{children}</h3>;
+        },
+        blockquote({ children }) {
+          return (
+            <blockquote className="mb-2 border-l-[3px] border-muted-foreground/30 pl-3 italic text-muted-foreground last:mb-0">
+              {children}
+            </blockquote>
+          );
+        },
+        table({ children }) {
+          return (
+            <div className="mb-2 overflow-x-auto last:mb-0">
+              <table className="w-full border-collapse text-[12px]">{children}</table>
+            </div>
+          );
+        },
+        th({ children }) {
+          return (
+            <th className="border border-border/50 bg-muted/50 px-2.5 py-1.5 text-left font-semibold">
+              {children}
+            </th>
+          );
+        },
+        td({ children }) {
+          return (
+            <td className="border border-border/50 px-2.5 py-1.5">{children}</td>
+          );
+        },
+        hr() {
+          return <hr className="my-3 border-border/50" />;
+        },
+        a({ href, children }) {
+          return (
+            <a
+              href={href}
+              className="text-[color:var(--color-label-you,rgb(37,99,235))] underline decoration-[color:var(--color-label-you,rgb(37,99,235))]/30 hover:decoration-[color:var(--color-label-you,rgb(37,99,235))]"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+/* ─── Code block with copy button ────────────────────────────────── */
+
+function CodeBlock({ language, code }: { language: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="group/code relative my-2 overflow-hidden rounded-lg border border-border/50">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border/50 bg-muted/40 px-3 py-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {language}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover/code:opacity-100"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3" /> Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" /> Copy
+            </>
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        language={language}
+        style={oneDark}
+        customStyle={{
+          margin: 0,
+          padding: "12px 14px",
+          fontSize: "12px",
+          lineHeight: "1.5",
+          background: "var(--color-msg-bash-bg, var(--color-muted))",
+          borderRadius: 0,
+        }}
+        codeTagProps={{
+          style: { fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace" },
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+/* ─── User message ───────────────────────────────────────────────── */
+
 function UserMessage({ content }: { content: string }) {
   return (
     <div className="mx-4 my-2">
@@ -49,19 +208,18 @@ function UserMessage({ content }: { content: string }) {
         className="relative overflow-hidden rounded-lg border border-border/50"
         style={{ backgroundColor: "var(--color-msg-user-bg, var(--color-accent))" }}
       >
-        {/* Left accent bar */}
         <div
           className="absolute left-0 top-0 h-full w-[3px]"
           style={{ backgroundColor: "var(--color-label-you, rgb(37,99,235))" }}
         />
-        <div className="py-3 pl-5 pr-4">
+        <div className="py-2.5 pl-5 pr-4">
           <div
-            className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider"
+            className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-label-you, rgb(37,99,235))" }}
           >
             You
           </div>
-          <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
             {content}
           </div>
         </div>
@@ -70,13 +228,8 @@ function UserMessage({ content }: { content: string }) {
   );
 }
 
-/**
- * Assistant message — card style with left orange accent bar.
- *
- * Uses design tokens:
- *   --color-msg-assistant-bg (rgb(250,250,250) light / rgb(35,35,35) dark)
- *   --color-label-claude     (rgb(215,119,87) — same in both modes)
- */
+/* ─── Assistant message with markdown ────────────────────────────── */
+
 function AssistantMessage({ content }: { content: string }) {
   return (
     <div className="mx-4 my-2">
@@ -84,20 +237,19 @@ function AssistantMessage({ content }: { content: string }) {
         className="relative overflow-hidden rounded-lg border border-border/50"
         style={{ backgroundColor: "var(--color-msg-assistant-bg, var(--color-background))" }}
       >
-        {/* Left accent bar */}
         <div
           className="absolute left-0 top-0 h-full w-[3px]"
           style={{ backgroundColor: "var(--color-label-claude, rgb(215,119,87))" }}
         />
-        <div className="py-3 pl-5 pr-4">
+        <div className="py-2.5 pl-5 pr-4">
           <div
-            className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider"
+            className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-label-claude, rgb(215,119,87))" }}
           >
             Assistant
           </div>
-          <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed">
-            {content}
+          <div className="text-[13px] leading-relaxed text-foreground">
+            <MarkdownContent content={content} />
           </div>
         </div>
       </div>
@@ -105,42 +257,30 @@ function AssistantMessage({ content }: { content: string }) {
   );
 }
 
-/**
- * Tool use message — collapsible card with tool name and input preview.
- */
-function ToolUseMessage({ message }: { message: ConversationMessage }) {
-  const [expanded, setExpanded] = useState(false);
-  const toolName = message.toolUse?.toolName ?? "Tool";
-  const toolInput = message.toolUse?.toolInput ?? "";
+/* ─── System message ─────────────────────────────────────────────── */
 
-  const icon = getToolIcon(toolName);
+function SystemMessage({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="mx-4 my-1">
       <button
-        className="flex w-full items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-xs transition-colors hover:bg-muted/50"
+        className="flex w-full items-center gap-2 rounded-lg border border-border/30 bg-muted/20 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? (
-          <ChevronDown className="size-3 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="size-3 text-muted-foreground" />
-        )}
-        <span className="text-terminal-tool">{icon}</span>
-        <span className="font-medium text-terminal-tool">{toolName}</span>
-        {!expanded && toolInput && (
-          <span className="flex-1 truncate text-left text-muted-foreground">
-            {toolInput.slice(0, 80)}
+        {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <Brain className="size-3" />
+        <span className="font-medium">System</span>
+        {!expanded && (
+          <span className="flex-1 truncate text-left opacity-60">
+            {content.slice(0, 80)}
           </span>
         )}
       </button>
-      {expanded && toolInput && (
-        <div
-          className="mt-1 rounded-b-lg border border-t-0 border-border/50 p-3"
-          style={{ backgroundColor: "var(--color-msg-bash-bg, var(--color-muted))" }}
-        >
-          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs text-foreground/80">
-            {toolInput}
+      {expanded && (
+        <div className="mt-1 rounded-b-lg border border-t-0 border-border/30 bg-muted/10 p-3">
+          <pre className="whitespace-pre-wrap font-mono text-[11px] text-muted-foreground">
+            {content}
           </pre>
         </div>
       )}
@@ -148,82 +288,255 @@ function ToolUseMessage({ message }: { message: ConversationMessage }) {
   );
 }
 
-/**
- * Tool result message — collapsible card with output preview.
- */
+/* ─── Tool use message ───────────────────────────────────────────── */
+
+function ToolUseMessage({ message }: { message: ConversationMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const toolName = message.toolUse?.toolName ?? "Tool";
+  const toolInput = message.toolUse?.toolInput ?? "";
+
+  const { icon: ToolIcon, label, color } = getToolMeta(toolName);
+
+  // Try to parse tool input for structured display
+  const parsedInput = useMemo(() => {
+    try {
+      return JSON.parse(toolInput) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }, [toolInput]);
+
+  const inputPreview = useMemo(() => {
+    if (parsedInput) {
+      // Show key params inline
+      if ("command" in parsedInput) return String(parsedInput.command);
+      if ("file_path" in parsedInput) return String(parsedInput.file_path);
+      if ("pattern" in parsedInput) return String(parsedInput.pattern);
+      if ("query" in parsedInput) return String(parsedInput.query);
+      if ("url" in parsedInput) return String(parsedInput.url);
+      if ("content" in parsedInput) return String(parsedInput.content).slice(0, 60);
+    }
+    return toolInput.slice(0, 100);
+  }, [parsedInput, toolInput]);
+
+  return (
+    <div className="mx-4 my-1">
+      <button
+        className="flex w-full items-center gap-2 rounded-lg border border-border/40 px-3 py-2 text-[12px] transition-colors hover:bg-muted/30"
+        style={{ backgroundColor: "var(--color-msg-bash-bg, var(--color-muted))" }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? (
+          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+        )}
+        <ToolIcon className="size-3.5 shrink-0" style={{ color }} />
+        <span className="font-medium" style={{ color }}>{label}</span>
+        {!expanded && inputPreview && (
+          <span className="flex-1 truncate text-left font-mono text-[11px] text-muted-foreground">
+            {inputPreview}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div
+          className="mt-0.5 overflow-hidden rounded-b-lg border border-t-0 border-border/40"
+          style={{ backgroundColor: "var(--color-msg-bash-bg, var(--color-muted))" }}
+        >
+          {parsedInput ? (
+            <StructuredToolInput params={parsedInput} />
+          ) : (
+            <pre className="overflow-x-auto whitespace-pre-wrap p-3 font-mono text-[11px] text-foreground/80">
+              {toolInput}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Structured tool input display ──────────────────────────────── */
+
+function StructuredToolInput({ params }: { params: Record<string, unknown> }) {
+  return (
+    <div className="divide-y divide-border/30">
+      {Object.entries(params).map(([key, value]) => {
+        const strValue = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+        const isLong = strValue.length > 120;
+
+        return (
+          <div key={key} className="flex gap-2 px-3 py-1.5">
+            <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {key}
+            </span>
+            {isLong ? (
+              <pre className="flex-1 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] text-foreground/80">
+                {strValue}
+              </pre>
+            ) : (
+              <span className="flex-1 truncate font-mono text-[11px] text-foreground/80">
+                {strValue}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Tool result message ────────────────────────────────────────── */
+
 function ToolResultMessage({ message }: { message: ConversationMessage }) {
   const [expanded, setExpanded] = useState(false);
   const toolName = message.toolResult?.toolName ?? "Result";
   const output = message.toolResult?.output ?? message.content;
   const isError = message.toolResult?.isError ?? false;
 
+  const lines = output.split("\n");
+  const lineCount = lines.length;
+  const isLong = lineCount > 3;
+
+  // Detect if output looks like a diff
+  const isDiff = output.includes("@@") && (output.includes("---") || output.includes("+++"));
+
   return (
     <div className="mx-4 my-1">
       <button
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
+          "flex w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-[12px] transition-colors",
           isError
-            ? "border-destructive/30 bg-destructive/5 hover:bg-destructive/10"
-            : "border-border/50 bg-muted/20 hover:bg-muted/40"
+            ? "border-[color:var(--color-error,rgb(171,43,63))]/30 bg-[color:var(--color-error,rgb(171,43,63))]/5 hover:bg-[color:var(--color-error,rgb(171,43,63))]/10"
+            : "border-[color:var(--color-success,rgb(44,122,57))]/20 bg-[color:var(--color-success,rgb(44,122,57))]/5 hover:bg-[color:var(--color-success,rgb(44,122,57))]/10"
         )}
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
-          <ChevronDown className="size-3" />
+          <ChevronDown className="size-3 shrink-0" />
         ) : (
-          <ChevronRight className="size-3" />
+          <ChevronRight className="size-3 shrink-0" />
         )}
         {isError ? (
-          <AlertCircle className="size-3.5 text-destructive" />
+          <AlertCircle className="size-3.5 shrink-0" style={{ color: "var(--color-error, rgb(171,43,63))" }} />
         ) : (
-          <CheckCircle2 className="size-3.5 text-terminal-tool" />
+          <CheckCircle2 className="size-3.5 shrink-0" style={{ color: "var(--color-success, rgb(44,122,57))" }} />
         )}
-        <span className="font-medium">{toolName} result</span>
+        <span className="font-medium">{toolName}</span>
         {!expanded && (
-          <span className="flex-1 truncate text-left text-muted-foreground">
-            {output.split("\n")[0]?.slice(0, 60)}
-          </span>
+          <>
+            {isLong && (
+              <span className="rounded bg-muted/50 px-1 py-0.5 text-[10px] text-muted-foreground">
+                {lineCount} lines
+              </span>
+            )}
+            <span className="flex-1 truncate text-left font-mono text-[11px] text-muted-foreground">
+              {lines[0]?.slice(0, 80)}
+            </span>
+          </>
         )}
       </button>
       {expanded && (
         <div
-          className="mt-1 max-h-[300px] overflow-auto rounded-b-lg border border-t-0 border-border/50 p-3"
+          className="mt-0.5 max-h-[400px] overflow-auto rounded-b-lg border border-t-0 border-border/40"
           style={{ backgroundColor: "var(--color-msg-bash-bg, var(--color-muted))" }}
         >
-          <pre className="whitespace-pre-wrap font-mono text-xs text-foreground/80">
-            {output}
-          </pre>
+          {isDiff ? (
+            <DiffDisplay content={output} />
+          ) : (
+            <pre className="whitespace-pre-wrap p-3 font-mono text-[11px] leading-[1.6] text-foreground/80">
+              {output}
+            </pre>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/**
- * Error message — destructive card.
- */
+/* ─── Inline diff display ────────────────────────────────────────── */
+
+function DiffDisplay({ content }: { content: string }) {
+  return (
+    <pre className="p-3 font-mono text-[11px] leading-[1.6]">
+      {content.split("\n").map((line, i) => {
+        let lineClass = "text-foreground/80";
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+          lineClass = "text-[color:var(--color-diff-added-word,rgb(47,157,68))] bg-[color:var(--color-diff-added,rgb(105,219,124))]/15";
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          lineClass = "text-[color:var(--color-diff-removed-word,rgb(209,69,75))] bg-[color:var(--color-diff-removed,rgb(255,168,180))]/15";
+        } else if (line.startsWith("@@")) {
+          lineClass = "text-[color:var(--claude-blue,rgb(87,105,247))]";
+        } else if (line.startsWith("---") || line.startsWith("+++")) {
+          lineClass = "text-muted-foreground font-semibold";
+        }
+
+        return (
+          <div key={i} className={cn("px-1", lineClass)}>
+            {line || " "}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+/* ─── Error message ──────────────────────────────────────────────── */
+
 function ErrorMessage({ content }: { content: string }) {
   return (
-    <div className="mx-4 my-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
-      <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="font-mono text-xs text-destructive">{content}</div>
+    <div className="mx-4 my-2">
+      <div
+        className="flex items-start gap-2 rounded-lg border px-3 py-2"
+        style={{
+          borderColor: "color-mix(in srgb, var(--color-error, rgb(171,43,63)) 30%, transparent)",
+          backgroundColor: "color-mix(in srgb, var(--color-error, rgb(171,43,63)) 5%, transparent)",
+        }}
+      >
+        <AlertCircle className="mt-0.5 size-3.5 shrink-0" style={{ color: "var(--color-error, rgb(171,43,63))" }} />
+        <div className="font-mono text-[12px]" style={{ color: "var(--color-error, rgb(171,43,63))" }}>
+          {content}
+        </div>
+      </div>
     </div>
   );
 }
 
-function getToolIcon(toolName: string) {
+/* ─── Tool metadata helper ───────────────────────────────────────── */
+
+function getToolMeta(toolName: string): {
+  icon: typeof TerminalIcon;
+  label: string;
+  color: string;
+} {
   const lower = toolName.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell"))
-    return <TerminalIcon className="size-3.5" />;
-  if (
-    lower.includes("edit") ||
-    lower.includes("write") ||
-    lower.includes("read")
-  )
-    return <FileEdit className="size-3.5" />;
-  if (lower.includes("grep") || lower.includes("glob") || lower.includes("search"))
-    return <Search className="size-3.5" />;
-  if (lower.includes("web") || lower.includes("fetch"))
-    return <Globe className="size-3.5" />;
-  return <TerminalIcon className="size-3.5" />;
+
+  if (lower === "bash" || lower.includes("shell"))
+    return { icon: TerminalIcon, label: "Bash", color: "var(--color-terminal-tool, rgb(44,122,57))" };
+  if (lower === "read" || lower === "readfile")
+    return { icon: Eye, label: "Read", color: "var(--claude-blue, rgb(87,105,247))" };
+  if (lower === "edit" || lower === "editfile")
+    return { icon: Pencil, label: "Edit", color: "var(--claude-orange, rgb(215,119,87))" };
+  if (lower === "write" || lower === "writefile")
+    return { icon: FileCode, label: "Write", color: "var(--claude-orange, rgb(215,119,87))" };
+  if (lower === "glob")
+    return { icon: FolderSearch, label: "Glob", color: "var(--color-terminal-tool, rgb(44,122,57))" };
+  if (lower === "grep")
+    return { icon: Search, label: "Grep", color: "var(--color-terminal-tool, rgb(44,122,57))" };
+  if (lower.includes("webfetch") || lower.includes("web_fetch"))
+    return { icon: Globe, label: "WebFetch", color: "var(--claude-blue, rgb(87,105,247))" };
+  if (lower.includes("websearch") || lower.includes("web_search"))
+    return { icon: Globe, label: "WebSearch", color: "var(--claude-blue, rgb(87,105,247))" };
+  if (lower === "agent")
+    return { icon: Brain, label: "Agent", color: "var(--agent-purple, rgb(147,51,234))" };
+  if (lower.includes("notebook"))
+    return { icon: BookOpen, label: "Notebook", color: "var(--claude-blue, rgb(87,105,247))" };
+  if (lower.includes("todowrite") || lower.includes("todo"))
+    return { icon: CheckCircle2, label: "TodoWrite", color: "var(--color-terminal-tool, rgb(44,122,57))" };
+  if (lower.includes("skill"))
+    return { icon: FileText, label: "Skill", color: "var(--agent-cyan, rgb(8,145,178))" };
+
+  // Fallback
+  return { icon: TerminalIcon, label: toolName, color: "var(--color-terminal-tool, rgb(44,122,57))" };
 }

@@ -91,9 +91,24 @@
     @apply bg-background text-foreground;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Monospace font for code blocks */
+  code, pre, .font-mono {
+    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "SF Mono",
+      "Consolas", "Liberation Mono", monospace;
+  }
+
+  /* Selection color */
+  ::selection {
+    background: var(--color-selection-bg, rgba(180, 213, 255, 0.4));
   }
 }
 
@@ -319,4 +334,66 @@
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0 0 / 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Animation utilities
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Shimmer animation for streaming indicator */
+@keyframes shimmer {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Slide-up for command palette */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.15s ease-out;
+}
+
+/* Fade-in for messages */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Syntax highlighter overrides for theme consistency
+   ═══════════════════════════════════════════════════════════════ */
+
+.theme-warwolf pre[class*="language-"] {
+  background: var(--color-msg-bash-bg) !important;
+}
+
+.theme-warwolf.dark pre[class*="language-"] {
+  background: var(--color-msg-bash-bg) !important;
 }
