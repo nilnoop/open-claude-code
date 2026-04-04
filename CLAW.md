@@ -14,7 +14,7 @@ This file provides guidance to Claw Code when working with code in this reposito
 - `rust/` contains the downstream Rust integration workspace for `desktop-core`, `desktop-server`, and `server`.
 - The shared Rust core is consumed from `claw-code-parity` via pinned Git dependencies in `rust/Cargo.toml`.
 - `apps/desktop-shell/` contains the desktop shell that talks to the Rust services.
-- `src/` and `tests/` remain the restored TypeScript/Electron surfaces and should stay aligned when behavior changes there.
+- Historical duplicate Python mirror code has been removed; do not recreate local shadow implementations of parity-owned core logic.
 
 ## Working agreement
 - Prefer small, reviewable changes and keep generated bootstrap files aligned with actual repo workflows.
