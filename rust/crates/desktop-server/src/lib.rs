@@ -281,11 +281,23 @@ pub fn app(state: AppState) -> Router {
             "/api/desktop/scheduled/{id}/run",
             post(run_scheduled_task_now),
         )
-        .route("/api/desktop/sessions/{id}", get(get_session))
+        .route("/api/desktop/sessions/{id}", get(get_session).delete(delete_session_handler))
         .route("/api/desktop/sessions/{id}/messages", post(append_message))
+        .route("/api/desktop/sessions/{id}/title", post(rename_session))
+        .route("/api/desktop/sessions/{id}/cancel", post(cancel_session))
+        .route("/api/desktop/sessions/{id}/resume", post(resume_session))
+        .route("/api/desktop/sessions/{id}/permission", post(forward_permission))
         .route(
             "/api/desktop/sessions/{id}/events",
             get(stream_session_events),
+        )
+        .route(
+            "/api/desktop/scheduled/{id}",
+            delete(delete_scheduled_task_handler).post(update_scheduled_task),
+        )
+        .route(
+            "/api/desktop/dispatch/items/{id}",
+            delete(delete_dispatch_item_handler).post(update_dispatch_item),
         )
         .layer(cors)
         .with_state(state)
@@ -735,6 +747,113 @@ fn into_api_error(error: DesktopStateError) -> ApiError {
             error: error.to_string(),
         }),
     )
+}
+
+// ── Session manipulation handlers ──────────────────────────────────
+
+async fn delete_session_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let deleted = state.desktop.delete_session(&id).await?;
+    Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+async fn rename_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let title = body["title"].as_str().unwrap_or("Untitled");
+    state.desktop.rename_session(&id, title).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn cancel_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    state.desktop.cancel_session(&id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn resume_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let session = state.desktop.resume_session(&id).await?;
+    Ok(Json(serde_json::json!({ "session": session })))
+}
+
+async fn forward_permission(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request_id = body["requestId"].as_str().unwrap_or("");
+    let decision = body["decision"].as_str().unwrap_or("deny");
+    state
+        .desktop
+        .forward_permission_decision(&id, request_id, decision)
+        .await?;
+    Ok(Json(serde_json::json!({ "forwarded": true })))
+}
+
+// ── Scheduled task extended CRUD handlers ──────────────────────────
+
+async fn delete_scheduled_task_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let deleted = state.desktop.delete_scheduled_task(&id).await?;
+    Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+async fn update_scheduled_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<DesktopScheduledTaskResponse>, ApiError> {
+    let task = state
+        .desktop
+        .update_scheduled_task(
+            &id,
+            body["title"].as_str().map(|s| s.to_string()),
+            body["prompt"].as_str().map(|s| s.to_string()),
+            body["enabled"].as_bool(),
+        )
+        .await?;
+    Ok(Json(DesktopScheduledTaskResponse { task }))
+}
+
+// ── Dispatch item extended CRUD handlers ──────────────────────────
+
+async fn delete_dispatch_item_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let deleted = state.desktop.delete_dispatch_item(&id).await?;
+    Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+async fn update_dispatch_item(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<DesktopDispatchItemResponse>, ApiError> {
+    let priority = body["priority"]
+        .as_str()
+        .and_then(|s| serde_json::from_value(serde_json::Value::String(s.to_string())).ok());
+    let item = state
+        .desktop
+        .update_dispatch_item(
+            &id,
+            body["title"].as_str().map(|s| s.to_string()),
+            body["body"].as_str().map(|s| s.to_string()),
+            priority,
+        )
+        .await?;
+    Ok(Json(DesktopDispatchItemResponse { item }))
 }
 
 pub async fn serve(state: AppState, address: SocketAddr) -> std::io::Result<()> {

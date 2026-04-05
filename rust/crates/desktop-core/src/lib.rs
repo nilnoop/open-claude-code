@@ -2061,6 +2061,189 @@ impl DesktopState {
         self.get_dispatch_item(item_id).await
     }
 
+    // ── Session manipulation ────────────────────────────────────────
+
+    pub async fn delete_session(
+        &self,
+        session_id: &str,
+    ) -> Result<bool, DesktopStateError> {
+        let removed = self
+            .store
+            .write()
+            .await
+            .sessions
+            .remove(session_id)
+            .is_some();
+        if !removed {
+            return Err(DesktopStateError::SessionNotFound(session_id.to_string()));
+        }
+        self.persist().await;
+        Ok(true)
+    }
+
+    pub async fn rename_session(
+        &self,
+        session_id: &str,
+        title: &str,
+    ) -> Result<(), DesktopStateError> {
+        let mut store = self.store.write().await;
+        let record = store
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| DesktopStateError::SessionNotFound(session_id.to_string()))?;
+        record.metadata.title = normalize_session_title(title);
+        record.metadata.updated_at = unix_timestamp_millis();
+        let snapshot = DesktopSessionEvent::Snapshot {
+            session: record.detail(),
+        };
+        let _ = record.events.send(snapshot);
+        drop(store);
+        self.persist().await;
+        Ok(())
+    }
+
+    pub async fn cancel_session(
+        &self,
+        session_id: &str,
+    ) -> Result<(), DesktopStateError> {
+        let mut store = self.store.write().await;
+        let record = store
+            .sessions
+            .get_mut(session_id)
+            .ok_or_else(|| DesktopStateError::SessionNotFound(session_id.to_string()))?;
+        record.metadata.turn_state = DesktopTurnState::Idle;
+        record.metadata.updated_at = unix_timestamp_millis();
+        let snapshot = DesktopSessionEvent::Snapshot {
+            session: record.detail(),
+        };
+        let _ = record.events.send(snapshot);
+        drop(store);
+        self.persist().await;
+        Ok(())
+    }
+
+    pub async fn resume_session(
+        &self,
+        session_id: &str,
+    ) -> Result<DesktopSessionDetail, DesktopStateError> {
+        let store = self.store.read().await;
+        let record = store
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| DesktopStateError::SessionNotFound(session_id.to_string()))?;
+        Ok(record.detail())
+    }
+
+    pub async fn forward_permission_decision(
+        &self,
+        session_id: &str,
+        _request_id: &str,
+        _decision: &str,
+    ) -> Result<(), DesktopStateError> {
+        // Validate session exists
+        let store = self.store.read().await;
+        let _record = store
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| DesktopStateError::SessionNotFound(session_id.to_string()))?;
+        // TODO: forward decision to runtime permission gate when available
+        Ok(())
+    }
+
+    // ── Scheduled task extended CRUD ──────────────────────────────
+
+    pub async fn delete_scheduled_task(
+        &self,
+        task_id: &str,
+    ) -> Result<bool, DesktopStateError> {
+        let removed = self
+            .scheduled_store
+            .write()
+            .await
+            .tasks
+            .remove(task_id)
+            .is_some();
+        if !removed {
+            return Err(DesktopStateError::ScheduledTaskNotFound(task_id.to_string()));
+        }
+        self.persist_scheduled().await;
+        Ok(true)
+    }
+
+    pub async fn update_scheduled_task(
+        &self,
+        task_id: &str,
+        title: Option<String>,
+        prompt: Option<String>,
+        enabled: Option<bool>,
+    ) -> Result<DesktopScheduledTask, DesktopStateError> {
+        let mut store = self.scheduled_store.write().await;
+        let task = store
+            .tasks
+            .get_mut(task_id)
+            .ok_or_else(|| DesktopStateError::ScheduledTaskNotFound(task_id.to_string()))?;
+        if let Some(t) = title {
+            task.title = t;
+        }
+        if let Some(p) = prompt {
+            task.prompt = p;
+        }
+        if let Some(e) = enabled {
+            task.enabled = e;
+        }
+        let result = self.scheduled_task_from_metadata(task);
+        drop(store);
+        self.persist_scheduled().await;
+        Ok(result)
+    }
+
+    // ── Dispatch item extended CRUD ───────────────────────────────
+
+    pub async fn delete_dispatch_item(
+        &self,
+        item_id: &str,
+    ) -> Result<bool, DesktopStateError> {
+        let removed = self
+            .dispatch_store
+            .write()
+            .await
+            .items
+            .remove(item_id)
+            .is_some();
+        if !removed {
+            return Err(DesktopStateError::DispatchItemNotFound(item_id.to_string()));
+        }
+        self.persist_dispatch().await;
+        Ok(true)
+    }
+
+    pub async fn update_dispatch_item(
+        &self,
+        item_id: &str,
+        title: Option<String>,
+        body: Option<String>,
+        priority: Option<DesktopDispatchPriority>,
+    ) -> Result<DesktopDispatchItem, DesktopStateError> {
+        let mut store = self.dispatch_store.write().await;
+        let item = store
+            .items
+            .get_mut(item_id)
+            .ok_or_else(|| DesktopStateError::DispatchItemNotFound(item_id.to_string()))?;
+        if let Some(t) = title {
+            item.title = t;
+        }
+        if let Some(b) = body {
+            item.body = b;
+        }
+        if let Some(p) = priority {
+            item.priority = p;
+        }
+        let result = self.dispatch_item_from_metadata(item);
+        drop(store);
+        self.persist_dispatch().await;
+        Ok(result)
+    }
+
     pub async fn create_session(
         &self,
         request: CreateDesktopSessionRequest,

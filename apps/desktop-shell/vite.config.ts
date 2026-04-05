@@ -27,5 +27,12 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
+    // Proxy API requests to Rust backend when running without Tauri
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:4357",
+        changeOrigin: true,
+      },
+    },
   },
 }));
