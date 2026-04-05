@@ -1,4 +1,4 @@
-import { Cpu, Globe, Zap, Hash, Clock } from "lucide-react";
+import { Cpu, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/store";
 import { getPermissionConfig } from "./InputBar";
@@ -7,22 +7,18 @@ interface StatusLineProps {
   modelLabel?: string;
   environmentLabel?: string;
   isRunning?: boolean;
-  tokenCount?: number;
-  sessionDuration?: string;
 }
 
 /**
  * StatusLine — bottom status bar matching Claude Code desktop.
  *
  * Layout:
- *   [Model badge] [Permission mode] [Environment]  ─────  [Running] [Tokens] [Duration]
+ *   [Model badge] [Permission mode] [Environment]  ─────  [Running]
  */
 export function StatusLine({
   modelLabel = "Opus 4.6",
   environmentLabel = "Local",
   isRunning = false,
-  tokenCount = 0,
-  sessionDuration,
 }: StatusLineProps) {
   const permissionMode = useAppSelector((s) => s.settings.permissionMode);
   const config = getPermissionConfig(permissionMode);
@@ -58,17 +54,6 @@ export function StatusLine({
             <Zap className="size-2.5" />
             Running
           </span>
-        )}
-
-        {tokenCount > 0 && (
-          <StatusItem
-            icon={Hash}
-            label={`${tokenCount.toLocaleString()} tokens`}
-          />
-        )}
-
-        {sessionDuration && (
-          <StatusItem icon={Clock} label={sessionDuration} />
         )}
       </div>
     </div>

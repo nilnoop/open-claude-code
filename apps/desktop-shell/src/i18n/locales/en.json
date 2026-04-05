@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "provider": "Providers",
+    "mcp": "MCP Servers",
+    "permissions": "Permissions",
+    "shortcuts": "Shortcuts",
+    "data": "Data",
+    "about": "About",
+    "loading": "Loading desktop settings...",
+    "comingSoon": "Coming soon"
+  }
+}

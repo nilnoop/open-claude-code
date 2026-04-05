@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   Settings,
   Key,
@@ -13,6 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useAppSelector } from "@/store";
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { ProviderSettings } from "./sections/ProviderSettings";
 import { McpSettings } from "./sections/McpSettings";
@@ -40,22 +42,29 @@ type SettingsSection =
 
 interface MenuItem {
   id: SettingsSection;
-  label: string;
+  i18nKey: string;
   icon: typeof Settings;
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { id: "general", label: "常规", icon: Settings },
-  { id: "provider", label: "模型服务", icon: Key },
-  { id: "mcp", label: "MCP 服务", icon: Plug },
-  { id: "permissions", label: "权限", icon: Shield },
-  { id: "shortcuts", label: "快捷键", icon: Keyboard },
-  { id: "data", label: "数据", icon: Database },
-  { id: "about", label: "关于", icon: Info },
+  { id: "general", i18nKey: "settings.general", icon: Settings },
+  { id: "provider", i18nKey: "settings.provider", icon: Key },
+  { id: "mcp", i18nKey: "settings.mcp", icon: Plug },
+  { id: "permissions", i18nKey: "settings.permissions", icon: Shield },
+  { id: "shortcuts", i18nKey: "settings.shortcuts", icon: Keyboard },
+  { id: "data", i18nKey: "settings.data", icon: Database },
+  { id: "about", i18nKey: "settings.about", icon: Info },
 ];
 
 export function SettingsPage() {
   const [active, setActive] = useState<SettingsSection>("general");
+  const { t, i18n } = useTranslation();
+
+  // Sync i18n language with Redux settings
+  const language = useAppSelector((s) => s.settings.language);
+  useEffect(() => {
+    void i18n.changeLanguage(language);
+  }, [language, i18n]);
 
   const bootstrapQuery = useQuery({
     queryKey: ["desktop-bootstrap"],
@@ -87,7 +96,7 @@ export function SettingsPage() {
     <div className="flex h-full">
       <div className="flex w-[200px] shrink-0 flex-col border-r border-border bg-sidebar-background">
         <div className="px-3 py-2.5">
-          <h2 className="text-[13px] font-semibold text-foreground">设置</h2>
+          <h2 className="text-[13px] font-semibold text-foreground">{t("settings.title")}</h2>
         </div>
         <Separator />
         <nav className="flex-1 px-1.5 py-1.5">
@@ -103,7 +112,7 @@ export function SettingsPage() {
               onClick={() => setActive(item.id)}
             >
               <item.icon className="size-3.5" />
-              {item.label}
+              {t(item.i18nKey)}
             </button>
           ))}
         </nav>
@@ -117,7 +126,7 @@ export function SettingsPage() {
           )}
         >
           <h2 className="mb-3 text-[15px] font-semibold text-foreground">
-            {MENU_ITEMS.find((m) => m.id === active)?.label}
+            {t(MENU_ITEMS.find((m) => m.id === active)?.i18nKey ?? "")}
           </h2>
 
           <SettingsContent
@@ -136,10 +145,11 @@ export function SettingsPage() {
 
 /** Loading placeholder for sections that depend on backend data */
 function SectionLoading() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
       <Loader2 className="size-4 animate-spin" />
-      <span>正在加载桌面设置...</span>
+      <span>{t("settings.loading")}</span>
     </div>
   );
 }
@@ -190,11 +200,18 @@ function SettingsContent({
       );
     default:
       return (
-        <div className="py-8 text-center text-sm text-muted-foreground">
-          即将支持
-        </div>
+        <ComingSoon />
       );
   }
+}
+
+function ComingSoon() {
+  const { t } = useTranslation();
+  return (
+    <div className="py-8 text-center text-sm text-muted-foreground">
+      {t("settings.comingSoon")}
+    </div>
+  );
 }
 
 function extractErrorMessage(...errors: Array<unknown>): string | undefined {

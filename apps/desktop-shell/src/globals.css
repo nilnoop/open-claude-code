@@ -22,11 +22,6 @@
   --color-border: oklch(0.922 0 0);
   --color-input: oklch(0.922 0 0);
   --color-ring: oklch(0.708 0 0);
-  --color-chart-1: oklch(0.646 0.222 41.116);
-  --color-chart-2: oklch(0.6 0.118 184.704);
-  --color-chart-3: oklch(0.398 0.07 227.392);
-  --color-chart-4: oklch(0.828 0.189 84.429);
-  --color-chart-5: oklch(0.769 0.188 70.08);
   --color-sidebar-background: oklch(0.985 0 0);
   --color-sidebar-foreground: oklch(0.556 0 0);
   --color-sidebar-primary: oklch(0.205 0 0);
@@ -63,11 +58,6 @@
     --color-border: oklch(0.269 0 0);
     --color-input: oklch(0.269 0 0);
     --color-ring: oklch(0.556 0 0);
-    --color-chart-1: oklch(0.488 0.243 264.376);
-    --color-chart-2: oklch(0.696 0.17 162.48);
-    --color-chart-3: oklch(0.769 0.188 70.08);
-    --color-chart-4: oklch(0.627 0.265 303.9);
-    --color-chart-5: oklch(0.645 0.246 16.439);
     --color-sidebar-background: oklch(0.175 0 0);
     --color-sidebar-foreground: oklch(0.708 0 0);
     --color-sidebar-primary: oklch(0.488 0.243 264.376);
@@ -196,10 +186,6 @@
     /* ── Fast mode ── */
     --color-fast-mode: rgb(255, 106, 0);
 
-    /* ── Rate limit ── */
-    --color-rate-fill: rgb(87, 105, 247);
-    --color-rate-empty: rgb(39, 47, 111);
-
     /* ── Permission ── */
     --color-permission: rgb(87, 105, 247);
     --color-suggestion: rgb(87, 105, 247);
@@ -297,10 +283,6 @@
 
     /* ── Fast mode ── */
     --color-fast-mode: rgb(255, 120, 20);
-
-    /* ── Rate limit ── */
-    --color-rate-fill: rgb(177, 185, 249);
-    --color-rate-empty: rgb(80, 83, 112);
 
     /* ── Permission ── */
     --color-permission: rgb(177, 185, 249);

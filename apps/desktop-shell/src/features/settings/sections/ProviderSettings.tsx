@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
@@ -70,6 +71,7 @@ type BusyAction =
 export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const [removeProfileId, setRemoveProfileId] = useState<string | null>(null);
   const [initializingProvider, setInitializingProvider] = useState(false);
   const [codexLoginSession, setCodexLoginSession] =
     useState<DesktopCodexLoginSessionSnapshot | null>(null);
@@ -450,9 +452,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
   }
 
   async function handleRemoveProfile(profileId: string) {
-    if (!window.confirm("确定要移除这个 OpenAI 登录账号吗？")) {
-      return;
-    }
+    setRemoveProfileId(profileId);
+  }
+
+  async function executeRemoveProfile(profileId: string) {
+    setRemoveProfileId(null);
     setBusyAction("remove-profile");
     try {
       await removeCodexAuthProfile(profileId);
@@ -869,6 +873,18 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={!!removeProfileId}
+        onOpenChange={(open) => { if (!open) setRemoveProfileId(null); }}
+        title="Remove account"
+        description="Remove this OpenAI login account? You can re-add it later by logging in again."
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={() => {
+          if (removeProfileId) void executeRemoveProfile(removeProfileId);
+        }}
+      />
     </div>
   );
 }

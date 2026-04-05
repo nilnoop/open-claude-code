@@ -256,4 +256,53 @@ The component supports two sizes (\`sm\` and \`md\`) and uses CSS variables from
 > **Note**: The toggle respects the system preference when set to "System" mode and will automatically update when the OS theme changes.`,
     timestamp: 14,
   },
+  // ─── Error scenario: failed tool execution ──────────────────
+  {
+    id: "demo-tool-error-use",
+    role: "assistant",
+    type: "tool_use",
+    content: JSON.stringify({ command: "npm run test -- --coverage" }),
+    timestamp: 15,
+    toolUse: {
+      toolName: "Bash",
+      toolInput: JSON.stringify({ command: "npm run test -- --coverage" }),
+    },
+  },
+  {
+    id: "demo-tool-error-result",
+    role: "assistant",
+    type: "tool_result",
+    content: `FAIL src/components/DarkModeToggle.test.tsx
+  ● DarkModeToggle › should toggle theme on click
+
+    TypeError: Cannot read properties of undefined (reading 'matches')
+
+      at Object.matchMedia (src/test/setup.ts:12:15)
+      at DarkModeToggle (src/components/DarkModeToggle.tsx:18:34)
+
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       1 failed, 12 passed, 13 total`,
+    timestamp: 16,
+    toolResult: {
+      toolName: "Bash",
+      output: `FAIL src/components/DarkModeToggle.test.tsx
+  ● DarkModeToggle › should toggle theme on click
+
+    TypeError: Cannot read properties of undefined (reading 'matches')
+
+      at Object.matchMedia (src/test/setup.ts:12:15)
+      at DarkModeToggle (src/components/DarkModeToggle.tsx:18:34)
+
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       1 failed, 12 passed, 13 total`,
+      isError: true,
+    },
+  },
+  {
+    id: "demo-assistant-error-recovery",
+    role: "assistant",
+    type: "text",
+    content: `The test failed because \`window.matchMedia\` isn't available in the test environment. I'll fix the test setup by adding a mock:`,
+    timestamp: 17,
+  },
 ];

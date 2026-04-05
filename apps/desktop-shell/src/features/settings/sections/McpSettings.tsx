@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../components/SettingGroup";
 import { useAppDispatch, useAppSelector } from "@/store";
@@ -75,8 +76,16 @@ export function McpSettings({ customize, error }: McpSettingsProps) {
     setEditingId(null);
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const deleteTarget = userServers.find((s) => s.id === deleteConfirmId);
+
   const handleDelete = (id: string) => {
-    dispatch(removeMcpServer(id));
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmId) dispatch(removeMcpServer(deleteConfirmId));
+    setDeleteConfirmId(null);
   };
 
   const handleToggle = (id: string) => {
@@ -180,6 +189,16 @@ export function McpSettings({ customize, error }: McpSettingsProps) {
           </div>
         </SettingGroup>
       )}
+
+      <ConfirmDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Remove MCP server"
+        description={`Remove "${deleteTarget?.name ?? ""}" server? This will remove it from your local configuration.`}
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

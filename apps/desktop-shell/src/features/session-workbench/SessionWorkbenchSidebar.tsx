@@ -14,6 +14,7 @@ import {
 import { useAppDispatch } from "@/store";
 import { setShowSessionSidebar } from "@/store/slices/settings";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -51,6 +52,7 @@ export function SessionWorkbenchSidebar({
     y: number;
     session: DesktopSessionSummary;
   } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DesktopSessionSummary | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Close context menu on click outside
@@ -286,7 +288,7 @@ export function SessionWorkbenchSidebar({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] transition-colors hover:bg-accent"
                 style={{ color: "var(--color-error)" }}
                 onClick={() => {
-                  onDeleteSession(contextMenu.session.id);
+                  setDeleteConfirm(contextMenu.session);
                   setContextMenu(null);
                 }}
               >
@@ -296,6 +298,22 @@ export function SessionWorkbenchSidebar({
             </>
           )}
         </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {onDeleteSession && (
+        <ConfirmDialog
+          open={!!deleteConfirm}
+          onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}
+          title="Delete session"
+          description="This session and its conversation history will be permanently deleted. This action cannot be undone."
+          confirmLabel="Delete"
+          variant="destructive"
+          onConfirm={() => {
+            if (deleteConfirm) onDeleteSession(deleteConfirm.id);
+            setDeleteConfirm(null);
+          }}
+        />
       )}
     </div>
   );
