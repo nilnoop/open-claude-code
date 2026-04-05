@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Plus,
@@ -49,6 +50,7 @@ import { cn } from "@/lib/utils";
  * Row 2 auto-hides when no session/minapp tabs are open.
  */
 export function TabBar() {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -212,25 +214,25 @@ export function TabBar() {
         <nav className="flex items-center gap-0.5 px-1">
           <NavButton
             icon={House}
-            label="首页"
+            label={t("nav.home")}
             active={isHomeActive}
             onClick={handleNavHome}
           />
           <NavButton
             icon={LayoutGrid}
-            label="应用"
+            label={t("nav.apps")}
             active={isAppsActive}
             onClick={handleNavApps}
           />
           <NavButton
             icon={Terminal}
-            label="代码"
+            label={t("nav.code")}
             active={isCodeActive}
             onClick={handleNavCode}
           />
           <NavButton
             icon={Settings}
-            label="设置"
+            label={t("nav.settings")}
             active={isSettingsActive}
             onClick={handleNavSettings}
           />

@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RefreshCw, Trash2, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,13 +23,16 @@ interface RealtimeLogCardProps {
 
 export function RealtimeLogCard({
   lines,
-  title = "实时日志",
-  emptyText = "暂无日志",
+  title,
+  emptyText,
   height = 260,
   lineColor,
   onRefresh,
   onClear,
 }: RealtimeLogCardProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("agent.section.realtimeLog");
+  const resolvedEmptyText = emptyText ?? t("agent.empty.noLogs");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -61,9 +65,9 @@ export function RealtimeLogCard({
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#1a1a1a] border-b border-white/5">
         <div className="flex items-center gap-2 text-xs text-[#a0a0a0]">
           <Terminal className="size-3.5" />
-          <span>{title}</span>
+          <span>{resolvedTitle}</span>
           {lines.length > 0 && (
-            <span className="text-[#666]">({lines.length} 行)</span>
+            <span className="text-[#666]">{t("agent.field.lineCount", { count: lines.length })}</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -99,7 +103,7 @@ export function RealtimeLogCard({
       >
         {lines.length === 0 ? (
           <div className="flex items-center justify-center h-full text-[#555]">
-            {emptyText}
+            {resolvedEmptyText}
           </div>
         ) : (
           lines.map((line, index) => (

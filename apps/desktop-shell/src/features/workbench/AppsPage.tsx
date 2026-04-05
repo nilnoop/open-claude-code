@@ -1,4 +1,5 @@
 import { Code } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch } from "@/store";
 import { setViewMode } from "@/store/slices/ui";
@@ -20,6 +21,7 @@ const APPS = [
 ] as const;
 
 export function AppsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
@@ -28,7 +30,7 @@ export function AppsPage() {
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-5 py-[50px]">
         <section className="flex flex-col gap-2">
           <h1 className="m-0 px-[36px] text-[14px] font-semibold text-foreground opacity-80">
-            应用
+            {t("page.apps")}
           </h1>
 
           <div className="grid grid-cols-6 gap-2 px-2">

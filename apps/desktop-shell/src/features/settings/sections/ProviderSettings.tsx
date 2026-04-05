@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import i18n from "@/i18n";
 import {
   CheckCircle2,
   Cloud,
@@ -69,6 +71,7 @@ type BusyAction =
   | null;
 
 export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
+  const { t } = useTranslation();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [removeProfileId, setRemoveProfileId] = useState<string | null>(null);
@@ -135,7 +138,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
   const syncState = useMemo(() => {
     if (!managedOpenAiProvider) {
       return {
-        label: "未写入",
+        label: t("provider.status.notWritten"),
         applied: false,
         live: false,
       };
@@ -143,13 +146,13 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     const live = Boolean(openAiLiveProvider);
     const applied = codexRuntime?.active_provider_key === managedOpenAiProvider.id;
     if (applied) {
-      return { label: "已同步生效", applied: true, live: true };
+      return { label: t("provider.status.syncedActive"), applied: true, live: true };
     }
     if (live) {
-      return { label: "已写入 Codex", applied: false, live: true };
+      return { label: t("provider.status.writtenToCodex"), applied: false, live: true };
     }
-    return { label: "未写入", applied: false, live: false };
-  }, [codexRuntime, managedOpenAiProvider, openAiLiveProvider]);
+    return { label: t("provider.status.notWritten"), applied: false, live: false };
+  }, [codexRuntime, managedOpenAiProvider, openAiLiveProvider, t]);
 
   const displayModels = useMemo(
     () => managedOpenAiProvider?.models ?? openAiPreset?.models ?? [],
@@ -168,25 +171,25 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     if (!activeProfile && !codexAuthOverview?.has_chatgpt_tokens) {
       messages.push({
         tone: "warning",
-        message: "当前尚未连接 OpenAI 账号，请先使用 ChatGPT 登录。",
+        message: t("provider.diagnostics.noAccount"),
       });
     }
     if (managedOpenAiProvider && !managedOpenAiProvider.enabled) {
       messages.push({
         tone: "warning",
-        message: "OpenAI 服务当前已停用，启用后才能同步到 Codex。",
+        message: t("provider.diagnostics.disabled"),
       });
     }
     if (managedOpenAiProvider && !syncState.live) {
       messages.push({
         tone: "warning",
-        message: "当前 OpenAI 配置尚未写入 Codex。",
+        message: t("provider.diagnostics.notWritten"),
       });
     }
     if (managedOpenAiProvider && syncState.live && !syncState.applied) {
       messages.push({
         tone: "warning",
-        message: "Codex 当前正在使用其他 provider，如需切换请重新同步 OpenAI。",
+        message: t("provider.diagnostics.otherProvider"),
       });
     }
     if (
@@ -197,7 +200,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     ) {
       messages.push({
         tone: "success",
-        message: `当前已使用 ${activeProfile.display_label} 连接 OpenAI，并将默认模型设为 ${currentDefaultModelId}。`,
+        message: t("provider.diagnostics.configured", { label: activeProfile.display_label, model: currentDefaultModelId }),
       });
     }
     return messages;
@@ -208,20 +211,21 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     managedOpenAiProvider,
     syncState.applied,
     syncState.live,
+    t,
   ]);
 
   const warningBanner = useMemo(() => {
     if (!activeProfile && !codexAuthOverview?.has_chatgpt_tokens) {
-      return "当前尚未连接 OpenAI 账号，请先使用 ChatGPT 登录。";
+      return t("provider.diagnostics.noAccount");
     }
     if (managedOpenAiProvider && !syncState.live) {
-      return "当前 OpenAI 账号已连接，但尚未写入 Codex 配置。";
+      return t("provider.diagnostics.connectedButNotWritten");
     }
     if (managedOpenAiProvider && syncState.live && !syncState.applied) {
-      return "当前 OpenAI 配置已写入 Codex，但尚未作为当前生效 provider。";
+      return t("provider.diagnostics.writtenButNotActive");
     }
     return null;
-  }, [activeProfile, codexAuthOverview?.has_chatgpt_tokens, managedOpenAiProvider, syncState]);
+  }, [activeProfile, codexAuthOverview?.has_chatgpt_tokens, managedOpenAiProvider, syncState, t]);
 
   async function refreshPageData() {
     await Promise.all([
@@ -237,7 +241,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       return managedOpenAiProvider;
     }
     if (!openAiPreset) {
-      throw new Error("OpenAI 官方服务配置尚未加载完成。");
+      throw new Error(t("provider.error.presetNotLoaded"));
     }
     const response = await upsertManagedProvider(toManagedProviderPayload(openAiPreset));
     return response.provider;
@@ -265,7 +269,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
           const message =
             providerError instanceof Error
               ? providerError.message
-              : "初始化 OpenAI 官方服务失败。";
+              : t("provider.error.initFailed");
           setNotice({ tone: "error", message });
         }
       })
@@ -297,7 +301,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
         setCodexLoginSession(response.session);
       } catch (pollError) {
         const message =
-          pollError instanceof Error ? pollError.message : "轮询 Codex 登录状态失败。";
+          pollError instanceof Error ? pollError.message : t("provider.error.pollLoginFailed");
         setNotice({ tone: "error", message });
       }
     }, 1500);
@@ -315,8 +319,8 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       setNotice({
         tone: "success",
         message: codexLoginSession.profile
-          ? `已使用 ${codexLoginSession.profile.display_label} 完成 OpenAI 登录。`
-          : "已完成 OpenAI 登录。",
+          ? t("provider.success.loginWithProfile", { label: codexLoginSession.profile.display_label })
+          : t("provider.success.loginCompleted"),
       });
     }
     if (codexLoginSession.status === "failed" && codexLoginSession.error) {
@@ -328,10 +332,10 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     setBusyAction("refresh");
     try {
       await refreshPageData();
-      setNotice({ tone: "success", message: "已刷新 OpenAI 与 Codex 当前状态。" });
+      setNotice({ tone: "success", message: t("provider.success.refreshed") });
     } catch (refreshError) {
       const message =
-        refreshError instanceof Error ? refreshError.message : "刷新状态失败。";
+        refreshError instanceof Error ? refreshError.message : t("provider.error.refreshFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -348,11 +352,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await refreshPageData();
       setNotice({
         tone: "success",
-        message: provider.enabled ? "已停用 OpenAI 服务。" : "已启用 OpenAI 服务。",
+        message: provider.enabled ? t("provider.success.disabled") : t("provider.success.enabled"),
       });
     } catch (toggleError) {
       const message =
-        toggleError instanceof Error ? toggleError.message : "更新服务状态失败。";
+        toggleError instanceof Error ? toggleError.message : t("provider.error.toggleFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -364,17 +368,17 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     try {
       const provider = await ensureOpenAiProvider();
       if (!provider.enabled) {
-        throw new Error("请先启用 OpenAI 服务，再同步到 Codex。");
+        throw new Error(t("provider.error.enableBeforeSync"));
       }
       const response = await syncManagedProvider(provider.id, { set_primary: false });
       await refreshPageData();
       setNotice({
         tone: "success",
-        message: `已将 OpenAI 官方配置同步到 Codex（${response.result.config_path}）。`,
+        message: t("provider.success.synced", { path: response.result.config_path }),
       });
     } catch (syncError) {
       const message =
-        syncError instanceof Error ? syncError.message : "同步到 Codex 失败。";
+        syncError instanceof Error ? syncError.message : t("provider.error.syncFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -388,11 +392,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await refreshPageData();
       setNotice({
         tone: "success",
-        message: "已导入当前本机的 Codex 登录态。",
+        message: t("provider.success.importedAuth"),
       });
     } catch (authError) {
       const message =
-        authError instanceof Error ? authError.message : "导入当前登录态失败。";
+        authError instanceof Error ? authError.message : t("provider.error.importAuthFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -407,11 +411,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await openDashboardUrl(response.session.authorize_url);
       setNotice({
         tone: "info",
-        message: "已打开浏览器授权页，请完成 ChatGPT 登录。",
+        message: t("provider.success.loginPageOpened"),
       });
     } catch (loginError) {
       const message =
-        loginError instanceof Error ? loginError.message : "打开 ChatGPT 登录失败。";
+        loginError instanceof Error ? loginError.message : t("provider.error.loginFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -425,11 +429,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await refreshPageData();
       setNotice({
         tone: "success",
-        message: "已将该账号设为当前 OpenAI 登录账号。",
+        message: t("provider.success.profileActivated"),
       });
     } catch (activateError) {
       const message =
-        activateError instanceof Error ? activateError.message : "切换账号失败。";
+        activateError instanceof Error ? activateError.message : t("provider.error.activateProfileFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -441,10 +445,10 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     try {
       await refreshCodexAuthProfile(profileId);
       await refreshPageData();
-      setNotice({ tone: "success", message: "已刷新该账号的登录状态。" });
+      setNotice({ tone: "success", message: t("provider.success.profileRefreshed") });
     } catch (refreshError) {
       const message =
-        refreshError instanceof Error ? refreshError.message : "刷新登录状态失败。";
+        refreshError instanceof Error ? refreshError.message : t("provider.error.refreshProfileFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -461,10 +465,10 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     try {
       await removeCodexAuthProfile(profileId);
       await refreshPageData();
-      setNotice({ tone: "success", message: "已移除该账号。" });
+      setNotice({ tone: "success", message: t("provider.success.profileRemoved") });
     } catch (removeError) {
       const message =
-        removeError instanceof Error ? removeError.message : "移除账号失败。";
+        removeError instanceof Error ? removeError.message : t("provider.error.removeProfileFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -484,11 +488,11 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await refreshPageData();
       setNotice({
         tone: "success",
-        message: `已将 ${modelId} 设为默认模型，请继续同步到 Codex。`,
+        message: t("provider.success.defaultModelSet", { modelId }),
       });
     } catch (modelError) {
       const message =
-        modelError instanceof Error ? modelError.message : "设置默认模型失败。";
+        modelError instanceof Error ? modelError.message : t("provider.error.setDefaultModelFailed");
       setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -502,7 +506,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       await openDashboardUrl(website);
     } catch (openError) {
       const message =
-        openError instanceof Error ? openError.message : "打开官网失败。";
+        openError instanceof Error ? openError.message : t("provider.error.openWebsiteFailed");
       setNotice({ tone: "error", message });
     }
   }
@@ -526,9 +530,9 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
         <section className="overflow-hidden rounded-2xl border border-border bg-background">
           <div className="border-b border-border px-5 py-4">
-            <div className="text-base font-semibold text-foreground">模型服务</div>
+            <div className="text-base font-semibold text-foreground">{t("provider.section.providerService")}</div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              当前版本仅支持 OpenAI 官方渠道，并通过 Codex 登录态完成授权。
+              {t("provider.description.onlyOpenAi")}
             </p>
           </div>
 
@@ -548,13 +552,13 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-base font-semibold text-foreground">OpenAI</div>
-                      <Badge variant="outline">官方</Badge>
+                      <Badge variant="outline">{t("provider.badge.official")}</Badge>
                       <Badge variant={displayProviderEnabled ? "default" : "secondary"}>
-                        {displayProviderEnabled ? "已启用" : "已停用"}
+                        {displayProviderEnabled ? t("provider.badge.enabled") : t("provider.badge.disabled")}
                       </Badge>
                     </div>
                     <div className="mt-2 text-sm text-muted-foreground">
-                      {activeProfile ? `已连接 ${activeProfile.display_label}` : "尚未登录"}
+                      {activeProfile ? t("provider.status.connected", { label: activeProfile.display_label }) : t("provider.status.notLoggedIn")}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       <Badge variant="outline">{syncState.label}</Badge>
@@ -567,7 +571,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
               </button>
 
               <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
-                不支持第三方兼容渠道、不支持 API 密钥录入、不支持自定义 Provider。
+                {t("provider.note.unsupported")}
               </div>
             </div>
           </ScrollArea>
@@ -580,23 +584,22 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-2xl font-semibold text-foreground">OpenAI</h3>
-                    <Badge variant="outline">官方</Badge>
-                    <Badge variant="outline">Codex 登录</Badge>
+                    <Badge variant="outline">{t("provider.badge.official")}</Badge>
+                    <Badge variant="outline">{t("provider.badge.codexLogin")}</Badge>
                     {displayProviderEnabled ? (
-                      <Badge variant="default">已启用</Badge>
+                      <Badge variant="default">{t("provider.badge.enabled")}</Badge>
                     ) : (
-                      <Badge variant="secondary">已停用</Badge>
+                      <Badge variant="secondary">{t("provider.badge.disabled")}</Badge>
                     )}
                   </div>
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    OpenAI 官方 Responses 服务，Warwolf 仅通过 Codex 登录态将配置同步到
-                    `~/.codex`。
+                    {t("provider.description.openAiResponses")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="outline" onClick={() => void handleOpenWebsite()}>
                     <ExternalLink className="size-4" />
-                    官网
+                    {t("provider.button.website")}
                   </Button>
                   <Button
                     variant="outline"
@@ -608,7 +611,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     ) : (
                       <RefreshCw className="size-4" />
                     )}
-                    刷新状态
+                    {t("provider.button.refreshStatus")}
                   </Button>
                   <Button
                     onClick={() => void handleSync()}
@@ -619,7 +622,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     ) : (
                       <Cloud className="size-4" />
                     )}
-                    同步到 Codex
+                    {t("provider.button.syncToCodex")}
                   </Button>
                   <button
                     type="button"
@@ -635,9 +638,9 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     {busyAction === "toggle-enabled" ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : displayProviderEnabled ? (
-                      "已启用"
+                      t("provider.badge.enabled")
                     ) : (
-                      "已停用"
+                      t("provider.badge.disabled")
                     )}
                   </button>
                 </div>
@@ -646,27 +649,27 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
               {warningBanner ? <NoticeBar message={warningBanner} /> : null}
 
               <SectionCard
-                title="账号连接"
-                description="仅支持通过 Codex 登录态连接 OpenAI，不支持手动填写 API 密钥。"
+                title={t("provider.section.accountConnection")}
+                description={t("provider.description.codexLoginOnly")}
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <MetricCard
-                    label="当前状态"
-                    value={activeProfile ? "已登录" : "未登录"}
+                    label={t("provider.field.currentStatus")}
+                    value={activeProfile ? t("provider.loginStatus.loggedIn") : t("provider.loginStatus.notLoggedIn")}
                     hint={
                       activeProfile
-                        ? `当前账号：${activeProfile.display_label}`
-                        : "请先完成 ChatGPT 登录"
+                        ? t("provider.field.currentAccount", { label: activeProfile.display_label })
+                        : t("provider.field.pleaseLogin")
                     }
                     tone={activeProfile ? "success" : "warning"}
                   />
                   <MetricCard
-                    label="同步状态"
+                    label={t("provider.field.syncStatus")}
                     value={syncState.label}
                     hint={
                       syncState.applied
-                        ? "OpenAI 已作为当前 Codex provider 生效"
-                        : "同步后将写入 ~/.codex/config.toml"
+                        ? t("provider.field.syncActiveHint")
+                        : t("provider.field.syncPendingHint")
                     }
                     tone={syncState.applied ? "success" : "warning"}
                   />
@@ -679,7 +682,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     ) : (
                       <LogIn className="size-4" />
                     )}
-                    使用 ChatGPT 登录
+                    {t("provider.button.loginWithChatGPT")}
                   </Button>
                   <Button
                     variant="outline"
@@ -691,7 +694,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     ) : (
                       <Download className="size-4" />
                     )}
-                    导入当前 Codex 登录态
+                    {t("provider.button.importCodexAuth")}
                   </Button>
                   {codexLoginSession?.status === "pending" ? (
                     <Button
@@ -700,7 +703,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                       disabled={busyAction !== null}
                     >
                       <ExternalLink className="size-4" />
-                      重新打开授权页
+                      {t("provider.button.reopenAuthPage")}
                     </Button>
                   ) : null}
                 </div>
@@ -708,15 +711,15 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                 {codexLoginSession ? (
                   <div className="rounded-2xl border border-border bg-muted/10 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-medium text-foreground">最近一次登录流程</div>
+                      <div className="text-sm font-medium text-foreground">{t("provider.field.lastLoginFlow")}</div>
                       <Badge variant="outline">{formatLoginSessionStatus(codexLoginSession.status)}</Badge>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      回调地址：{codexLoginSession.redirect_uri}
+                      {t("provider.field.redirectUri")}{codexLoginSession.redirect_uri}
                     </div>
                     {codexLoginSession.profile ? (
                       <div className="mt-2 text-sm text-foreground">
-                        已导入账号：{codexLoginSession.profile.display_label}
+                        {t("provider.field.importedAccount")}{codexLoginSession.profile.display_label}
                       </div>
                     ) : null}
                     {codexLoginSession.error ? (
@@ -741,31 +744,31 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     ))}
                   </div>
                 ) : (
-                  <LoadingBlock label="正在读取 OpenAI 登录状态..." />
+                  <LoadingBlock label={t("provider.loading.readingAuthStatus")} />
                 )}
               </SectionCard>
 
               <SectionCard
-                title="服务配置"
-                description="这一区域仅展示当前 OpenAI 官方服务的只读配置，不支持手动修改。"
+                title={t("provider.section.serviceConfig")}
+                description={t("provider.description.readOnlyConfig")}
               >
                 <div className="grid gap-4 md:grid-cols-2">
-                  <InfoField label="鉴权方式" value="Codex 登录" />
-                  <InfoField label="协议" value="OpenAI Responses" />
-                  <InfoField label="API 地址" value={displayProvider.base_url} />
-                  <InfoField label="官方站点" value={displayProvider.website_url ?? "https://platform.openai.com"} />
-                  <InfoField label="Codex 配置文件" value={codexRuntime?.config_path ?? "~/.codex/config.toml"} />
-                  <InfoField label="授权文件" value={codexRuntime?.auth_path ?? "~/.codex/auth.json"} />
+                  <InfoField label={t("provider.field.authMethod")} value={t("provider.value.codexLogin")} />
+                  <InfoField label={t("provider.field.protocol")} value="OpenAI Responses" />
+                  <InfoField label={t("provider.field.apiUrl")} value={displayProvider.base_url} />
+                  <InfoField label={t("provider.field.officialSite")} value={displayProvider.website_url ?? "https://platform.openai.com"} />
+                  <InfoField label={t("provider.field.codexConfigFile")} value={codexRuntime?.config_path ?? "~/.codex/config.toml"} />
+                  <InfoField label={t("provider.field.authFile")} value={codexRuntime?.auth_path ?? "~/.codex/auth.json"} />
                 </div>
               </SectionCard>
 
               <SectionCard
-                title="模型"
-                description="使用官方 OpenAI 模型目录，只允许设置默认模型，不允许手动新增、删除或编辑。"
+                title={t("provider.section.models")}
+                description={t("provider.description.modelCatalog")}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm text-muted-foreground">
-                    默认模型：{currentDefaultModelId ?? "尚未设置"}
+                    {t("provider.field.defaultModel")}{currentDefaultModelId ?? t("provider.value.notSet")}
                   </div>
                   <Button
                     variant="outline"
@@ -774,7 +777,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                     disabled={busyAction !== null}
                   >
                     <RefreshCw className="size-4" />
-                    刷新模型状态
+                    {t("provider.button.refreshModelStatus")}
                   </Button>
                 </div>
 
@@ -797,7 +800,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                                   <div className="text-sm font-medium text-foreground">
                                     {model.display_name}
                                   </div>
-                                  {isDefault ? <Badge variant="default">默认模型</Badge> : null}
+                                  {isDefault ? <Badge variant="default">{t("provider.badge.defaultModel")}</Badge> : null}
                                 </div>
                                 <div className="mt-2 text-xs text-muted-foreground">
                                   {model.model_id}
@@ -822,7 +825,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                                   ) : isDefault ? (
                                     <CheckCircle2 className="size-4" />
                                   ) : null}
-                                  {isDefault ? "当前默认" : "设为默认模型"}
+                                  {isDefault ? t("provider.button.currentDefault") : t("provider.button.setAsDefault")}
                                 </Button>
                               </div>
                             </div>
@@ -835,17 +838,17 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
               </SectionCard>
 
               <SectionCard
-                title="诊断"
-                description="聚合 OpenAI 登录、Codex 同步和当前使用状态，帮助你快速判断是否可用。"
+                title={t("provider.section.diagnostics")}
+                description={t("provider.description.diagnostics")}
               >
                 <div className="grid gap-4 md:grid-cols-2">
-                  <InfoField label="当前账号" value={activeProfile?.display_label ?? "未登录"} />
+                  <InfoField label={t("provider.field.currentAccount2")} value={activeProfile?.display_label ?? t("provider.loginStatus.notLoggedIn")} />
                   <InfoField
-                    label="账号套餐"
-                    value={activeProfile?.chatgpt_plan_type ?? codexRuntime?.auth_plan_type ?? "未知"}
+                    label={t("provider.field.accountPlan")}
+                    value={activeProfile?.chatgpt_plan_type ?? codexRuntime?.auth_plan_type ?? t("provider.value.unknown")}
                   />
-                  <InfoField label="当前 Provider" value={codexRuntime?.active_provider_key ?? "未设置"} />
-                  <InfoField label="当前模型" value={codexRuntime?.model ?? customize?.model_label ?? "未设置"} />
+                  <InfoField label={t("provider.field.currentProvider")} value={codexRuntime?.active_provider_key ?? t("provider.value.notSet")} />
+                  <InfoField label={t("provider.field.currentModel")} value={codexRuntime?.model ?? customize?.model_label ?? t("provider.value.notSet")} />
                 </div>
                 <div className="space-y-2">
                   {diagnostics.length > 0 ? (
@@ -859,7 +862,7 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
                   ) : (
                     <DiagnosticRow
                       tone="warning"
-                      message="正在等待 OpenAI 与 Codex 状态返回。"
+                      message={t("provider.diagnostics.waiting")}
                     />
                   )}
                 </div>
@@ -867,8 +870,8 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
             </div>
           ) : (
             <EmptyState
-              title="正在准备 OpenAI 官方服务"
-              body="Warwolf 会自动初始化 OpenAI Provider，并读取当前 Codex 登录与模型状态。"
+              title={t("provider.loading.preparingService")}
+              body={t("provider.loading.autoInitialize")}
             />
           )}
         </section>
@@ -984,6 +987,7 @@ function ProfileCard({
   onRefresh: () => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const isCurrent = profile.active && profile.applied_to_codex;
   return (
     <div
@@ -1009,14 +1013,14 @@ function ProfileCard({
             {profile.chatgpt_plan_type ? (
               <Badge variant="outline">{profile.chatgpt_plan_type}</Badge>
             ) : null}
-            {profile.active ? <Badge variant="default">当前账号</Badge> : null}
+            {profile.active ? <Badge variant="default">{t("provider.badge.currentAccount")}</Badge> : null}
             {profile.applied_to_codex ? (
-              <Badge variant={isCurrent ? "default" : "outline"}>Codex 生效中</Badge>
+              <Badge variant={isCurrent ? "default" : "outline"}>{t("provider.badge.codexActive")}</Badge>
             ) : null}
           </div>
           <div className="mt-2 text-xs text-muted-foreground">{profile.email}</div>
           <div className="mt-2 text-xs text-muted-foreground">
-            最近更新：{formatEpoch(profile.updated_at_epoch)}
+            {t("provider.field.lastUpdated")}{formatEpoch(profile.updated_at_epoch)}
           </div>
         </div>
 
@@ -1032,7 +1036,7 @@ function ProfileCard({
             ) : (
               <CheckCircle2 className="size-4" />
             )}
-            {isCurrent ? "当前使用中" : "设为当前账号"}
+            {isCurrent ? t("provider.button.currentlyUsed") : t("provider.button.setAsCurrent")}
           </Button>
           <Button
             size="sm"
@@ -1045,7 +1049,7 @@ function ProfileCard({
             ) : (
               <RefreshCw className="size-4" />
             )}
-            刷新令牌
+            {t("provider.button.refreshToken")}
           </Button>
           <Button
             size="sm"
@@ -1058,7 +1062,7 @@ function ProfileCard({
             ) : (
               <Trash2 className="size-4" />
             )}
-            移除
+            {t("provider.button.remove")}
           </Button>
         </div>
       </div>
@@ -1169,7 +1173,7 @@ function isManagedProviderSource(
 function prioritizeModel(models: DesktopProviderModel[], modelId: string) {
   const selected = models.find((model) => model.model_id === modelId);
   if (!selected) {
-    throw new Error(`未找到模型：${modelId}`);
+    throw new Error(i18n.t("provider.error.modelNotFound", { modelId }));
   }
   return [selected, ...models.filter((model) => model.model_id !== modelId)];
 }
@@ -1182,34 +1186,41 @@ function groupOpenAiModels(models: DesktopProviderModel[]) {
     current.push(model);
     groups.set(label, current);
   }
-  return ["GPT 5", "GPT 5.1", "GPT 图像", "其他模型"]
-    .filter((label) => groups.has(label))
-    .map((label) => ({
-      label,
-      models: groups.get(label) ?? [],
+  const orderedKeys = ["GPT 5", "GPT 5.1", "GPT_IMAGE", "OTHER"];
+  const labelMap: Record<string, string> = {
+    "GPT 5": "GPT 5",
+    "GPT 5.1": "GPT 5.1",
+    "GPT_IMAGE": i18n.t("provider.modelGroup.gptImage"),
+    "OTHER": i18n.t("provider.modelGroup.other"),
+  };
+  return orderedKeys
+    .filter((key) => groups.has(key))
+    .map((key) => ({
+      label: labelMap[key] ?? key,
+      models: groups.get(key) ?? [],
     }));
 }
 
 function modelGroupLabel(model: DesktopProviderModel) {
   const haystack = `${model.model_id} ${model.display_name}`.toLowerCase();
-  if (haystack.includes("image")) return "GPT 图像";
+  if (haystack.includes("image")) return "GPT_IMAGE";
   if (haystack.includes("gpt-5.1") || haystack.includes("gpt 5.1")) return "GPT 5.1";
   if (haystack.includes("gpt-5") || haystack.includes("gpt 5")) return "GPT 5";
-  return "其他模型";
+  return "OTHER";
 }
 
 function formatCapabilityTags(tags: string[]) {
-  if (tags.length === 0) return ["通用"];
+  if (tags.length === 0) return [i18n.t("provider.modelTag.general")];
   return tags.map((tag) => {
     switch (tag) {
       case "general":
-        return "对话";
+        return i18n.t("provider.modelTag.chat");
       case "reasoning":
-        return "推理";
+        return i18n.t("provider.modelTag.reasoning");
       case "coding":
-        return "代码";
+        return i18n.t("provider.modelTag.coding");
       case "image":
-        return "图像";
+        return i18n.t("provider.modelTag.image");
       default:
         return tag;
     }
@@ -1217,26 +1228,26 @@ function formatCapabilityTags(tags: string[]) {
 }
 
 function formatCodexAuthSource(source: DesktopCodexAuthSource) {
-  return source === "browser_login" ? "浏览器登录" : "导入 auth.json";
+  return source === "browser_login" ? i18n.t("provider.source.browserLogin") : i18n.t("provider.source.importAuthJson");
 }
 
 function formatLoginSessionStatus(status: DesktopCodexLoginSessionSnapshot["status"]) {
   switch (status) {
     case "pending":
-      return "等待授权中";
+      return i18n.t("provider.loginStatus.pending");
     case "completed":
-      return "已完成";
+      return i18n.t("provider.loginStatus.completed");
     case "failed":
-      return "失败";
+      return i18n.t("provider.loginStatus.failed");
     case "cancelled":
-      return "已取消";
+      return i18n.t("provider.loginStatus.cancelled");
     default:
       return status;
   }
 }
 
 function formatEpoch(epoch: number | null) {
-  if (!epoch) return "未知";
+  if (!epoch) return i18n.t("provider.value.unknown");
   return new Date(epoch * 1000).toLocaleString();
 }
 

@@ -30,10 +30,11 @@ import {
 import {
   setShowSessionSidebar,
 } from "@/store/slices/settings";
-import type {
-  ContentBlock,
-  DesktopSessionDetail,
-  RuntimeConversationMessage,
+import {
+  forwardPermissionDecision,
+  type ContentBlock,
+  type DesktopSessionDetail,
+  type RuntimeConversationMessage,
 } from "@/lib/tauri";
 import type { ConversationMessage } from "@/store/slices/sessions";
 import { MOCK_DEMO_MESSAGES } from "./mockDemoMessages";
@@ -109,10 +110,18 @@ export function SessionWorkbenchTerminal({
             decision: action,
           })
         );
-        // TODO: forward decision to Tauri backend when protocol is available
+        // Forward decision to Tauri backend
+        if (session?.id) {
+          void forwardPermissionDecision(session.id, {
+            requestId: pendingPermission.id,
+            decision: action,
+          }).catch(() => {
+            // Backend may not be ready yet — decision is still stored locally
+          });
+        }
       }
     },
-    [dispatch, pendingPermission]
+    [dispatch, pendingPermission, session?.id]
   );
 
   const addSystemMessage = useCallback((text: string) => {

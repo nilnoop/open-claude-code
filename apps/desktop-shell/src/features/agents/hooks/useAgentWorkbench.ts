@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import i18n from "@/i18n";
 import type {
   AgentId,
   AgentStatusNotice,
@@ -106,7 +107,7 @@ export function useAgentPanelActions(agentId: AgentId) {
       setActionNotice({
         tone: "error",
         message:
-          workbench.detail.serviceStatus.hint ?? "启动 OpenClaw 服务失败",
+          workbench.detail.serviceStatus.hint ?? i18n.t("agent.error.startServiceFailed"),
       });
     }
   }, [openDashboardOnRunning, openDashboardTab, workbench]);
@@ -142,7 +143,7 @@ export function useAgentPanelActions(agentId: AgentId) {
       const nextAction = resolvePrimaryActionKind(workbench.detail);
 
       if (nextAction === "install") {
-        setActionNotice({ tone: "info", message: "正在安装 OpenClaw..." });
+        setActionNotice({ tone: "info", message: i18n.t("agent.message.installing") });
         await installMutation.mutateAsync();
         await refreshDetail();
         setActionNotice(null);
@@ -154,7 +155,7 @@ export function useAgentPanelActions(agentId: AgentId) {
         await stopThenStart(
           {
             tone: "info",
-            message: "正在清理旧的 OpenClaw 进程并启动服务...",
+            message: i18n.t("agent.message.cleaningAndStarting"),
           },
           { keepNotice: true }
         );
@@ -164,7 +165,7 @@ export function useAgentPanelActions(agentId: AgentId) {
       // Dashboard
       setActionNotice({
         tone: "info",
-        message: "正在打开 OpenClaw 对话页...",
+        message: i18n.t("agent.message.openingDashboard"),
       });
       openDashboardTab(dashboardUrl(workbench.detail));
       setActionNotice(null);
@@ -179,7 +180,7 @@ export function useAgentPanelActions(agentId: AgentId) {
     try {
       await stopThenStart({
         tone: "info",
-        message: "正在重启 OpenClaw 服务...",
+        message: i18n.t("agent.message.restarting"),
       });
     } catch (error) {
       setOpenDashboardOnRunning(false);

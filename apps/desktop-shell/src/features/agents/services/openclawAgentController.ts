@@ -10,6 +10,7 @@
  * 4. Assembling the AgentWorkbenchState view model
  */
 
+import i18n from "@/i18n";
 import {
   agentPipelineStart,
   agentPipelineStatus,
@@ -126,7 +127,7 @@ async function settleDetailCall<T>(
       await delay(DETAIL_FETCH_RETRY_DELAY_MS * (attempt + 1));
     }
   }
-  return { value: null, error: `${label}失败：${describeError(lastError)}` };
+  return { value: null, error: `${label}${i18n.t("agent.error.fetchSuffix")}${describeError(lastError)}` };
 }
 
 function hasMeaningfulStatus(status: AgentPipelineStatus): boolean {
@@ -283,7 +284,7 @@ function normalizeOpenclawDetail(
       hint:
         next.serviceStatus.success && next.serviceStatus.hint
           ? next.serviceStatus.hint
-          : "检测到 OpenClaw 服务已运行",
+          : i18n.t("agent.message.serviceDetectedRunning"),
     };
   }
 
@@ -339,7 +340,7 @@ function normalizeOpenclawDetail(
     next.installStatus = synthesizeStatus(
       "install",
       true,
-      "检测到 OpenClaw 已安装"
+      i18n.t("agent.message.installDetected")
     );
   }
 
@@ -355,7 +356,7 @@ function normalizeOpenclawDetail(
     next.serviceStatus = synthesizeStatus(
       "start",
       true,
-      "检测到 OpenClaw 服务已运行",
+      i18n.t("agent.message.serviceDetectedRunning"),
       OPENCLAW_DASHBOARD_URL
     );
   }
@@ -371,65 +372,65 @@ function resolveStatusLabel(detail: OpenclawAgentDetail): {
   label: string;
   tone: HomeTone;
 } {
-  if (detail.uninstallStatus.running) return { label: "卸载中", tone: "info" };
-  if (detail.installStatus.running) return { label: "安装中", tone: "info" };
+  if (detail.uninstallStatus.running) return { label: i18n.t("agent.status.uninstalling"), tone: "info" };
+  if (detail.installStatus.running) return { label: i18n.t("agent.status.installing"), tone: "info" };
   if (
     !detail.product.installed &&
     detail.installStatus.finished &&
     !detail.installStatus.success
   )
-    return { label: "安装失败", tone: "error" };
-  if (detail.serviceStatus.running) return { label: "启动中", tone: "info" };
+    return { label: i18n.t("agent.status.installFailed"), tone: "error" };
+  if (detail.serviceStatus.running) return { label: i18n.t("agent.status.starting"), tone: "info" };
   if (
     detail.product.installed &&
     !detail.product.service_running &&
     detail.serviceStatus.finished &&
     !detail.serviceStatus.success
   )
-    return { label: "启动失败", tone: "error" };
+    return { label: i18n.t("agent.status.startFailed"), tone: "error" };
   if (detail.product.service_running)
-    return { label: "已安装 · 运行中", tone: "success" };
+    return { label: i18n.t("agent.status.installedRunning"), tone: "success" };
   if (detail.product.installed)
-    return { label: "已安装 · 未运行", tone: "warning" };
-  return { label: "未安装", tone: "default" };
+    return { label: i18n.t("agent.status.installedStopped"), tone: "warning" };
+  return { label: i18n.t("agent.status.notInstalled"), tone: "default" };
 }
 
 function resolvePrimaryActionLabel(detail: OpenclawAgentDetail): string {
-  if (detail.installStatus.running) return "安装中...";
+  if (detail.installStatus.running) return i18n.t("agent.button.installing");
   if (!detail.product.installed) {
     if (detail.installStatus.finished && !detail.installStatus.success) {
-      return "重试安装 OpenClaw";
+      return i18n.t("agent.button.retryInstall");
     }
-    return "安装 OpenClaw";
+    return i18n.t("agent.button.install");
   }
-  if (detail.serviceStatus.running) return "启动中...";
+  if (detail.serviceStatus.running) return i18n.t("agent.button.starting");
   if (!detail.product.service_running) {
     if (detail.serviceStatus.finished && !detail.serviceStatus.success) {
-      return "重试启动 OpenClaw 服务";
+      return i18n.t("agent.button.retryStart");
     }
-    return "启动 OpenClaw 服务";
+    return i18n.t("agent.button.startService");
   }
-  return "打开 OpenClaw 对话页";
+  return i18n.t("agent.button.openDashboard");
 }
 
 function resolveStatusNotice(detail: OpenclawAgentDetail): AgentStatusNotice {
   if (detail.uninstallStatus.running) {
     return {
       tone: "info",
-      message: detail.uninstallStatus.hint ?? "正在卸载 OpenClaw...",
+      message: detail.uninstallStatus.hint ?? i18n.t("agent.message.uninstalling"),
     };
   }
   if (detail.uninstallStatus.finished && !detail.uninstallStatus.success) {
     return {
       tone: "error",
       message:
-        detail.uninstallStatus.hint ?? "卸载失败，请查看下方卸载日志。",
+        detail.uninstallStatus.hint ?? i18n.t("agent.error.uninstallFailedCheckLog"),
     };
   }
   if (detail.installStatus.running) {
     return {
       tone: "info",
-      message: detail.installStatus.hint ?? "正在安装 OpenClaw...",
+      message: detail.installStatus.hint ?? i18n.t("agent.message.installing"),
     };
   }
   if (!detail.product.installed) {
@@ -437,21 +438,21 @@ function resolveStatusNotice(detail: OpenclawAgentDetail): AgentStatusNotice {
       return {
         tone: "error",
         message:
-          detail.installStatus.hint ?? "安装失败，请查看下方安装日志后重试。",
+          detail.installStatus.hint ?? i18n.t("agent.error.installFailedCheckLog"),
       };
     }
     if (detail.uninstallStatus.finished && detail.uninstallStatus.success) {
       return {
         tone: "info",
-        message: detail.uninstallStatus.hint ?? "OpenClaw 卸载完成",
+        message: detail.uninstallStatus.hint ?? i18n.t("agent.message.uninstallComplete"),
       };
     }
-    return { tone: "default", message: "请先安装 OpenClaw。" };
+    return { tone: "default", message: i18n.t("agent.message.pleaseInstall") };
   }
   if (detail.serviceStatus.running) {
     return {
       tone: "info",
-      message: detail.serviceStatus.hint ?? "正在启动 OpenClaw 服务...",
+      message: detail.serviceStatus.hint ?? i18n.t("agent.message.startingService"),
     };
   }
   if (!detail.product.service_running) {
@@ -459,12 +460,12 @@ function resolveStatusNotice(detail: OpenclawAgentDetail): AgentStatusNotice {
       return {
         tone: "error",
         message:
-          detail.serviceStatus.hint ?? "启动失败，请查看下方启动日志后重试。",
+          detail.serviceStatus.hint ?? i18n.t("agent.error.startFailedCheckLog"),
       };
     }
-    return { tone: "success", message: "✅ 安装成功，请启动 OpenClaw 服务。" };
+    return { tone: "success", message: i18n.t("agent.message.installSuccessStartService") };
   }
-  return { tone: "success", message: "✅ 服务已启动，可打开 OpenClaw 对话页。" };
+  return { tone: "success", message: i18n.t("agent.message.serviceReadyOpenDashboard") };
 }
 
 // ---------------------------------------------------------------------------
@@ -479,30 +480,30 @@ function resolveLifecycleStatus(
     action === "install" ? detail.installStatus : detail.serviceStatus;
   if (status.running) {
     return {
-      label: action === "install" ? "安装中" : "启动中",
+      label: action === "install" ? i18n.t("agent.status.installing") : i18n.t("agent.status.starting"),
       tone: "info",
     };
   }
   if (status.finished && status.success) {
     return {
-      label: action === "install" ? "安装完成" : "服务已就绪",
+      label: action === "install" ? i18n.t("agent.status.installComplete") : i18n.t("agent.status.serviceReady"),
       tone: "success",
     };
   }
   if (status.finished && !status.success) {
     return {
-      label: action === "install" ? "安装失败" : "启动失败",
+      label: action === "install" ? i18n.t("agent.status.installFailed") : i18n.t("agent.status.startFailed"),
       tone: "error",
     };
   }
   if (action === "install") {
     return detail.product.installed
-      ? { label: "安装完成", tone: "success" }
-      : { label: "未开始", tone: "default" };
+      ? { label: i18n.t("agent.status.installComplete"), tone: "success" }
+      : { label: i18n.t("agent.status.notStarted"), tone: "default" };
   }
   return detail.product.service_running
-    ? { label: "服务已就绪", tone: "success" }
-    : { label: "未启动", tone: "warning" };
+    ? { label: i18n.t("agent.status.serviceReady"), tone: "success" }
+    : { label: i18n.t("agent.status.notStartedService"), tone: "warning" };
 }
 
 function resolveLifecycleSteps(
@@ -519,20 +520,19 @@ function resolveLifecycleSteps(
 
   const installStep: AgentLifecycleStep = {
     id: "install",
-    title: "步骤 1：安装 OpenClaw",
-    description:
-      "安装时会优先复用机器上已有的 OpenClaw；若未检测到可用版本，会通过 npm 完成安装。",
+    title: i18n.t("agent.section.step1Install"),
+    description: i18n.t("agent.description.installDescription"),
     statusLabel: installStatus.label,
     statusTone: installStatus.tone,
     rows: [
-      { label: "安装模式", value: detail.product.install_mode ?? "--" },
-      { label: "版本", value: detail.product.version ?? "--" },
-      { label: "Node 版本", value: detail.product.node_version ?? "--" },
-      { label: "命令路径", value: detail.product.command_path ?? "--" },
+      { label: i18n.t("agent.field.installMode"), value: detail.product.install_mode ?? "--" },
+      { label: i18n.t("agent.field.version"), value: detail.product.version ?? "--" },
+      { label: i18n.t("agent.field.nodeVersion"), value: detail.product.node_version ?? "--" },
+      { label: i18n.t("agent.field.commandPath"), value: detail.product.command_path ?? "--" },
     ],
     hint: detail.installStatus.hint,
     logs: detail.installStatus.logs ?? [],
-    emptyText: "暂无安装日志",
+    emptyText: i18n.t("agent.empty.noInstallLogs"),
     defaultExpanded:
       detail.installStatus.running ||
       (detail.installStatus.finished && !detail.installStatus.success) ||
@@ -544,32 +544,31 @@ function resolveLifecycleSteps(
   if (shouldShowStartStep) {
     steps.push({
       id: "start",
-      title: "步骤 2：启动 OpenClaw 服务",
-      description:
-        "安装完成后再启动 OpenClaw 服务。服务就绪后，可直接进入对话页检查实际可用状态。",
+      title: i18n.t("agent.section.step2Start"),
+      description: i18n.t("agent.description.startDescription"),
       statusLabel: startStatus.label,
       statusTone: startStatus.tone,
       rows: [
         {
-          label: "运行状态",
+          label: i18n.t("agent.field.runningStatus"),
           value: detail.product.service_running ? "Running" : "Stopped",
         },
         {
-          label: "对话页",
+          label: i18n.t("agent.field.dashboardPage"),
           value:
             detail.serviceStatus.dashboard_url ??
-            "由 OpenClaw 运行时动态生成",
+            i18n.t("agent.field.dashboardDynamic"),
         },
         {
-          label: "服务提示",
-          value: detail.serviceStatus.hint ?? "等待启动或检测结果",
+          label: i18n.t("agent.field.serviceHint"),
+          value: detail.serviceStatus.hint ?? i18n.t("agent.field.waitingForStartOrDetect"),
         },
       ],
       hint: detail.product.service_running
-        ? "服务已就绪，可直接打开 OpenClaw 对话页。"
+        ? i18n.t("agent.message.serviceReadyOpenDashboardShort")
         : detail.serviceStatus.hint,
       logs: detail.serviceStatus.logs ?? [],
-      emptyText: "暂无启动日志",
+      emptyText: i18n.t("agent.empty.noStartLogs"),
       defaultExpanded:
         detail.serviceStatus.running ||
         (detail.serviceStatus.finished && !detail.serviceStatus.success) ||
@@ -605,24 +604,24 @@ function formatUptime(seconds?: number | null): string {
 }
 
 function resolveRuntimeActivityLabel(detail: OpenclawAgentDetail): string {
-  if (detail.serviceStatus.running) return "启动中";
-  if (!detail.runtimeSnapshot.running) return "未启动";
-  if (detail.runtimeSnapshot.activity_state === "busy") return "处理中";
-  if (detail.runtimeSnapshot.activity_state === "idle") return "空闲";
-  return "运行中";
+  if (detail.serviceStatus.running) return i18n.t("agent.activity.starting");
+  if (!detail.runtimeSnapshot.running) return i18n.t("agent.activity.notStarted");
+  if (detail.runtimeSnapshot.activity_state === "busy") return i18n.t("agent.activity.processing");
+  if (detail.runtimeSnapshot.activity_state === "idle") return i18n.t("agent.activity.idle");
+  return i18n.t("agent.activity.running");
 }
 
 function resolveRuntimeMetrics(
   detail: OpenclawAgentDetail
 ): AgentRuntimeMetric[] {
   return [
-    { label: "运行状态", value: resolveRuntimeActivityLabel(detail) },
+    { label: i18n.t("agent.field.runningStatus"), value: resolveRuntimeActivityLabel(detail) },
     {
-      label: "内存占用",
+      label: i18n.t("agent.field.memoryUsage"),
       value: formatMemory(detail.runtimeSnapshot.memory_bytes),
     },
     {
-      label: "运行时长",
+      label: i18n.t("agent.field.uptime"),
       value: formatUptime(detail.runtimeSnapshot.uptime_seconds),
     },
   ];
@@ -632,9 +631,9 @@ function resolveEnvironmentItems(
   detail: OpenclawAgentDetail
 ): AgentKeyValueItem[] {
   return [
-    { label: "OpenClaw 版本", value: detail.connectStatus.version ?? "--" },
+    { label: i18n.t("agent.field.openclawVersion"), value: detail.connectStatus.version ?? "--" },
     { label: "Node.js", value: detail.connectStatus.node_version ?? "--" },
-    { label: "命令路径", value: detail.connectStatus.command_path ?? "--" },
+    { label: i18n.t("agent.field.commandPath"), value: detail.connectStatus.command_path ?? "--" },
   ];
 }
 
@@ -645,20 +644,20 @@ function resolveEnvironmentItems(
 export async function fetchOpenclawDetail(): Promise<OpenclawAgentDetail> {
   const [cs, overview, runtime, install, service, uninstall] =
     await Promise.all([
-      settleDetailCall("读取 OpenClaw 连接状态", () => openclawConnectStatus()),
-      settleDetailCall("读取 OpenClaw 安装概览", () =>
+      settleDetailCall(i18n.t("agent.loading.readConnectStatus"), () => openclawConnectStatus()),
+      settleDetailCall(i18n.t("agent.loading.readSetupOverview"), () =>
         openclawSetupOverview()
       ),
-      settleDetailCall("读取 OpenClaw 运行快照", () =>
+      settleDetailCall(i18n.t("agent.loading.readRuntimeSnapshot"), () =>
         openclawRuntimeSnapshot()
       ),
-      settleDetailCall("读取 OpenClaw 安装流水线状态", () =>
+      settleDetailCall(i18n.t("agent.loading.readInstallPipeline"), () =>
         agentPipelineStatus("openclaw", "install")
       ),
-      settleDetailCall("读取 OpenClaw 启动流水线状态", () =>
+      settleDetailCall(i18n.t("agent.loading.readStartPipeline"), () =>
         agentPipelineStatus("openclaw", "start")
       ),
-      settleDetailCall("读取 OpenClaw 卸载流水线状态", () =>
+      settleDetailCall(i18n.t("agent.loading.readUninstallPipeline"), () =>
         agentPipelineStatus("openclaw", "uninstall")
       ),
     ]);
@@ -705,23 +704,23 @@ export function buildWorkbench(
     statusNotice: resolveStatusNotice(detail),
     primaryActionLabel: resolvePrimaryActionLabel(detail),
     heroSummary: [
-      `模型 ${detail.product.model_count}`,
-      detail.product.connected ? "已接入 战狼" : "待接入 战狼",
+      i18n.t("agent.state.modelCount", { count: detail.product.model_count }),
+      detail.product.connected ? i18n.t("agent.state.connectedWarwolf") : i18n.t("agent.state.pendingWarwolf"),
     ],
     runtimeMetrics: resolveRuntimeMetrics(detail),
     environmentItems: resolveEnvironmentItems(detail),
     lifecycleSteps: resolveLifecycleSteps(detail),
-    uninstallActionLabel: "卸载",
+    uninstallActionLabel: i18n.t("agent.button.uninstall"),
   };
 }
 
 export function buildLoadingWorkbench(): AgentWorkbenchLoading {
   return {
     kind: "loading",
-    statusLabel: "加载中",
+    statusLabel: i18n.t("agent.status.loading"),
     statusTone: "info",
-    statusNotice: { tone: "info", message: "正在载入 OpenClaw 当前状态..." },
-    primaryActionLabel: "加载中...",
+    statusNotice: { tone: "info", message: i18n.t("agent.loading.loadingState") },
+    primaryActionLabel: i18n.t("agent.button.loading"),
   };
 }
 
@@ -730,13 +729,13 @@ export function buildErrorWorkbench(
 ): AgentWorkbenchError {
   return {
     kind: "error",
-    statusLabel: "读取失败",
+    statusLabel: i18n.t("agent.status.fetchFailed"),
     statusTone: "error",
     statusNotice: {
       tone: "error",
-      message: `OpenClaw 状态读取失败：${message}`,
+      message: i18n.t("agent.error.stateFetchFailed", { message }),
     },
-    primaryActionLabel: "重新加载",
+    primaryActionLabel: i18n.t("agent.button.reload"),
     errorMessage: message,
   };
 }

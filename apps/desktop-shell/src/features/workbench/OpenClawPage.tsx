@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Download,
   ExternalLink,
@@ -117,11 +118,13 @@ function LogContainer({
   title,
   expanded = false,
   onClose,
+  closeLabel,
 }: {
   logs: LogEntry[];
   title: string;
   expanded?: boolean;
   onClose?: () => void;
+  closeLabel?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -142,7 +145,7 @@ function LogContainer({
             className="h-6 text-xs"
             onClick={onClose}
           >
-            关闭
+            {closeLabel}
           </Button>
         )}
       </div>
@@ -179,6 +182,7 @@ function LogContainer({
 // ---------------------------------------------------------------------------
 
 export function OpenClawPage() {
+  const { t } = useTranslation();
   const { openSmartMinapp } = useMinappPopup();
 
   // ── Core state ───────────────────────────────────────────────────────
@@ -307,18 +311,18 @@ export function OpenClawPage() {
           if (s.success) {
             await checkInstallation();
           } else {
-            setError(s.hint ?? "安装失败，请查看下方安装日志。");
+            setError(s.hint ?? t("openclaw.error.installFailed"));
           }
           return;
         }
       }
-      setError("安装超时");
+      setError(t("openclaw.error.installTimeout"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsInstalling(false);
     }
-  }, [checkInstallation]);
+  }, [checkInstallation, t]);
 
   // ── handleUninstall ──────────────────────────────────────────────────
   const handleUninstallClick = useCallback(() => {
@@ -359,17 +363,17 @@ export function OpenClawPage() {
         if (s.finished) {
           setUninstallSuccess(s.success);
           if (!s.success) {
-            setError(s.hint ?? "卸载失败，请查看下方卸载日志。");
+            setError(s.hint ?? t("openclaw.error.uninstallFailed"));
           }
           return;
         }
       }
-      setError("卸载超时");
+      setError(t("openclaw.error.uninstallTimeout"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsUninstalling(false);
     }
-  }, [gatewayStatus]);
+  }, [gatewayStatus, t]);
 
   const handleUninstallComplete = useCallback(() => {
     setShowLogs(false);
@@ -403,7 +407,7 @@ export function OpenClawPage() {
             }, 500);
             return;
           } else if (!s.success) {
-            setError(s.hint ?? "启动失败，请查看安装日志。");
+            setError(s.hint ?? t("openclaw.error.startFailed"));
             setGatewayStatus("error");
           }
           break;
@@ -415,7 +419,7 @@ export function OpenClawPage() {
     } finally {
       setIsStarting(false);
     }
-  }, [openDashboardTab]);
+  }, [openDashboardTab, t]);
 
   // ── handleStopGateway ────────────────────────────────────────────────
   const handleStopGateway = useCallback(async () => {
@@ -429,14 +433,14 @@ export function OpenClawPage() {
         const check = await openclawGetStatus();
         setGatewayStatus(check.status as GatewayStatus);
       } else {
-        setError("停止服务失败");
+        setError(t("openclaw.error.stopFailed"));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsStopping(false);
     }
-  }, []);
+  }, [t]);
 
   // ── handleOpenDashboard — 在顶部新开 tab 打开 dashboard ──────────────
   const handleOpenDashboard = useCallback(async () => {
@@ -473,7 +477,7 @@ export function OpenClawPage() {
       <div className="flex flex-col items-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
         <div className="mt-4 text-muted-foreground">
-          正在检查 OpenClaw 安装状态...
+          {t("openclaw.status.checking")}
         </div>
       </div>
     </div>
@@ -495,12 +499,12 @@ export function OpenClawPage() {
             draggable={false}
           />
           <h2 className="mt-4 text-xl font-semibold text-foreground">
-            {needsMigration ? "OpenClaw 需要更新" : "OpenClaw 未安装"}
+            {needsMigration ? t("openclaw.status.needsUpdate") : t("openclaw.status.notInstalled")}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground max-w-sm leading-relaxed">
             {needsMigration
-              ? "检测到通过 npm 安装的旧版本 OpenClaw，请重新安装以获取最新官方版本。"
-              : "OpenClaw 尚未安装在您的系统上。请先安装它以使用此功能。"}
+              ? t("openclaw.description.needsMigration")
+              : t("openclaw.description.notInstalled")}
           </p>
           <div className="mt-6 flex items-center gap-3">
             <Button
@@ -514,10 +518,10 @@ export function OpenClawPage() {
                 <Download className="size-4" />
               )}
               {isInstalling
-                ? "安装中..."
+                ? t("openclaw.button.installing")
                 : needsMigration
-                  ? "重新安装 OpenClaw"
-                  : "安装 OpenClaw"}
+                  ? t("openclaw.button.reinstall")
+                  : t("openclaw.button.install")}
             </Button>
             <Button
               variant="outline"
@@ -526,7 +530,7 @@ export function OpenClawPage() {
               className="gap-2"
             >
               <ExternalLink className="size-4" />
-              查看文档
+              {t("openclaw.button.viewDocs")}
             </Button>
           </div>
         </div>
@@ -553,7 +557,8 @@ export function OpenClawPage() {
           <div className="mt-6">
             <LogContainer
               logs={installLogs}
-              title="安装进度"
+              title={t("openclaw.section.installProgress")}
+              closeLabel={t("openclaw.button.close")}
               onClose={() => setShowLogs(false)}
             />
           </div>
@@ -571,7 +576,7 @@ export function OpenClawPage() {
       <div className="m-auto min-h-fit w-[520px]">
         <TitleSection
           title="OpenClaw"
-          description="使用 Warwolf 提供的服务商为 OpenClaw 提供支持，OpenClaw 是您的个人 AI 助手，可在微信、飞书、钉钉、QQ 等平台上使用。"
+          description={t("openclaw.description.installed")}
           clickable
         />
 
@@ -582,7 +587,7 @@ export function OpenClawPage() {
             style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
           >
             <div className="min-w-0 shrink overflow-hidden">
-              <div className="mb-1 text-xs">安装路径</div>
+              <div className="mb-1 text-xs">{t("openclaw.field.installPath")}</div>
               <div className="flex items-center gap-2">
                 <div className="truncate text-xs" title={installPath}>
                   {installPath}
@@ -599,7 +604,7 @@ export function OpenClawPage() {
               className="cursor-pointer whitespace-nowrap text-xs transition-colors hover:text-destructive"
               onClick={handleUninstallClick}
             >
-              卸载
+              {t("openclaw.button.uninstall")}
             </span>
           </div>
         )}
@@ -608,14 +613,14 @@ export function OpenClawPage() {
         {showUninstallConfirm && (
           <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
             <p className="text-sm text-foreground mb-3">
-              确定要卸载 OpenClaw 吗？卸载后将停止运行中的服务。
+              {t("openclaw.confirm.uninstall")}
             </p>
             <div className="flex gap-2">
               <Button size="sm" variant="destructive" onClick={handleUninstallConfirmed}>
-                确定卸载
+                {t("openclaw.button.confirmUninstall")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setShowUninstallConfirm(false)}>
-                取消
+                {t("openclaw.button.cancel")}
               </Button>
             </div>
           </div>
@@ -629,7 +634,7 @@ export function OpenClawPage() {
           >
             <div className="flex items-center gap-2">
               <div className="size-2 rounded-full bg-green-500" />
-              <span className="text-sm font-medium text-foreground">运行中</span>
+              <span className="text-sm font-medium text-foreground">{t("openclaw.status.running")}</span>
               <span className="font-mono text-[13px] text-muted-foreground">:{gatewayPort}</span>
             </div>
             <Button
@@ -640,7 +645,7 @@ export function OpenClawPage() {
               disabled={isStopping}
             >
               {isStopping ? <Loader2 className="size-3.5 animate-spin" /> : <Square className="size-3.5" />}
-              停止
+              {t("openclaw.button.stop")}
             </Button>
           </div>
         )}
@@ -663,17 +668,17 @@ export function OpenClawPage() {
             className="mb-6 rounded-lg p-3 text-xs leading-relaxed"
             style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
           >
-            <div className="mb-1 font-medium">提示</div>
+            <div className="mb-1 font-medium">{t("openclaw.section.tips")}</div>
             <ul className="list-inside list-disc space-y-1">
-              <li>OpenClaw 会使用您配置的服务商 API 密钥来处理请求，请确保已正确设置。</li>
-              <li>启动后会消耗 API Token，使用量取决于对话频率和消息长度。</li>
+              <li>{t("openclaw.hint.apiKeyRequired")}</li>
+              <li>{t("openclaw.hint.tokenConsumption")}</li>
             </ul>
           </div>
         )}
 
         {/* Install progress logs */}
         {showLogs && installLogs.length > 0 && (
-          <LogContainer logs={installLogs} title="安装进度" onClose={() => setShowLogs(false)} />
+          <LogContainer logs={installLogs} title={t("openclaw.section.installProgress")} closeLabel={t("openclaw.button.close")} onClose={() => setShowLogs(false)} />
         )}
 
         {/* Primary action button */}
@@ -688,11 +693,11 @@ export function OpenClawPage() {
             ) : (
               <Play className="size-4" />
             )}
-            {isStarting || gatewayStatus === "starting" ? "启动中..." : "启动 OpenClaw 服务"}
+            {isStarting || gatewayStatus === "starting" ? t("openclaw.button.starting") : t("openclaw.button.startService")}
           </Button>
         ) : (
           <Button className="w-full h-11 text-base" onClick={handleOpenDashboard}>
-            打开控制面板
+            {t("openclaw.button.openDashboard")}
           </Button>
         )}
       </div>
@@ -706,17 +711,17 @@ export function OpenClawPage() {
     <div className="flex h-full overflow-y-auto py-5">
       <div className="m-auto min-h-fit w-[520px]">
         <TitleSection
-          title={uninstallSuccess ? "卸载完成" : "卸载中..."}
-          description={uninstallSuccess ? "OpenClaw 已成功卸载。" : "正在卸载 OpenClaw，请稍候..."}
+          title={uninstallSuccess ? t("openclaw.status.uninstallComplete") : t("openclaw.status.uninstalling")}
+          description={uninstallSuccess ? t("openclaw.description.uninstallSuccess") : t("openclaw.description.uninstalling")}
         />
         {error && (
           <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         )}
-        <LogContainer logs={installLogs} title="卸载进度" expanded />
+        <LogContainer logs={installLogs} title={t("openclaw.section.uninstallProgress")} expanded />
         <Button className="w-full h-11 text-base" disabled={!uninstallSuccess} onClick={handleUninstallComplete}>
-          关闭
+          {t("openclaw.button.close")}
         </Button>
       </div>
     </div>

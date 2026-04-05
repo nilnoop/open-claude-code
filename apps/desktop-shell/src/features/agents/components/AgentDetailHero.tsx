@@ -10,6 +10,7 @@
  * 3. Loading — placeholder with disabled button
  */
 
+import { useTranslation } from "react-i18next";
 import { Loader2, Download, Power, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ export function AgentDetailHero({
   onRestart,
   onUninstall,
 }: AgentDetailHeroProps) {
+  const { t } = useTranslation();
   const loading = installPending || startPending || uninstallPending;
   const loadingWorkbench = workbench.kind === "loading";
 
@@ -49,20 +51,20 @@ export function AgentDetailHero({
       "18790";
     const heroNotice = statusNotice ?? workbench.statusNotice;
     const serviceStateLabel = running
-      ? "运行中"
+      ? t("agent.state.running")
       : workbench.detail.serviceStatus.running
-        ? "启动中"
-        : "未运行";
+        ? t("agent.state.starting")
+        : t("agent.state.notRunning");
 
     // Compact detail pills
     const compactDetails = [
       ...workbench.heroSummary,
       ...workbench.runtimeMetrics
-        .filter((m) => m.label === "运行状态" || m.label === "内存占用")
+        .filter((m) => m.label === t("agent.field.runningStatus") || m.label === t("agent.field.memoryUsage"))
         .map((m) => `${m.label} ${m.value}`),
       ...workbench.environmentItems
         .filter(
-          (m) => m.label === "OpenClaw 版本" || m.label === "Node.js"
+          (m) => m.label === t("agent.field.openclawVersion") || m.label === "Node.js"
         )
         .map((m) => `${m.label} ${m.value}`),
     ];
@@ -185,7 +187,7 @@ export function AgentDetailHero({
                   type="button"
                 >
                   <RotateCcw className="size-[15px]" />
-                  <span>重启</span>
+                  <span>{t("agent.button.restart")}</span>
                 </button>
               )}
               <button
@@ -226,15 +228,15 @@ export function AgentDetailHero({
             OpenClaw
           </h3>
           <p className="mt-3.5 text-base text-muted-foreground max-w-[44ch] leading-relaxed">
-            开源个人 AI 助手
+            {t("agent.description.openSourceAssistant")}
           </p>
         </div>
       </div>
 
       <div className="mt-4 text-xs font-semibold text-muted-foreground leading-loose">
         {loadingWorkbench
-          ? "正在读取 Agent 当前状态 · 完成后会自动切换到真实运行视图"
-          : "统一 Agent 详情模板"}
+          ? t("agent.loading.readingAgentState")
+          : t("agent.description.agentDetailTemplate")}
       </div>
 
       <div className="flex flex-col items-stretch w-full max-w-[840px] mt-4">

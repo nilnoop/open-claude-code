@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import type { AgentId } from "@/types/agent";
 import {
@@ -22,6 +23,7 @@ interface AgentPanelProps {
 }
 
 export function AgentPanel({ agentId }: AgentPanelProps) {
+  const { t } = useTranslation();
   const workbench = useAgentWorkbench(agentId);
   const [preferredLogTab, setPreferredLogTab] = useState<
     "install" | "start" | "uninstall" | undefined
@@ -82,7 +84,7 @@ export function AgentPanel({ agentId }: AgentPanelProps) {
       {workbench.kind === "supported" && (installPending || startPending) && (
         <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          <span>正在刷新 OpenClaw 状态...</span>
+          <span>{t("agent.loading.refreshingStatus")}</span>
         </div>
       )}
 

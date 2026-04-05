@@ -1,4 +1,279 @@
 {
+  "nav": {
+    "home": "Home",
+    "apps": "Apps",
+    "code": "Code",
+    "settings": "Settings"
+  },
+  "page": {
+    "apps": "Apps"
+  },
+  "codetools": {
+    "success": {
+      "bunInstalled": "Bun Installation Complete",
+      "launchSuccess": "Launched successfully"
+    },
+    "error": {
+      "installBunFailed": "Failed to Install Bun",
+      "folderSelectorFailed": "Failed to open folder selector. Please retry.",
+      "launchFailed": "Failed to launch. Please retry."
+    },
+    "warning": {
+      "bunRequired": "Please install Bun environment before launching CLI tools",
+      "workdirRequired": "Please select a working directory",
+      "modelRequired": "Please select a model"
+    },
+    "page": {
+      "title": "Code Tools",
+      "description": "Quickly launch multiple CLI tools to improve development efficiency"
+    },
+    "notice": {
+      "bunRequired": "Running CLI tools requires Bun environment",
+      "codexAuthMissing": "OpenAI Codex has not detected available Codex login or API credentials",
+      "codexAuthHint": "If using OpenAI Codex, complete Codex login in Settings > Provider page first.",
+      "noProviders": "No providers available for",
+      "thisTool": " this tool",
+      "presetsShown": ", preset directory will be displayed first."
+    },
+    "button": {
+      "installing": "Installing...",
+      "installBun": "Install Bun",
+      "selectFolder": "Select Folder",
+      "terminalPath": "Terminal Path",
+      "launching": "Launching...",
+      "launch": "Launch"
+    },
+    "label": {
+      "cliTool": "CLI Tools",
+      "model": "Model",
+      "workdir": "Working Directory",
+      "envVars": "Environment Variables",
+      "terminal": "Terminal",
+      "updateOptions": "Update Options"
+    },
+    "placeholder": {
+      "selectTool": "Select the CLI tool to use",
+      "selectModel": "Select the model to use",
+      "selectWorkdir": "Select working directory",
+      "selectTerminal": "Select terminal application"
+    },
+    "hint": {
+      "envVars": "Enter custom environment variables (one per line, format: KEY=value)"
+    },
+    "checkbox": {
+      "autoUpdate": "Check for updates and install latest version"
+    }
+  },
+  "provider": {
+    "popover": {
+      "supported": "Supported Providers",
+      "noAnthropicProviders": "No Anthropic compatible providers"
+    },
+    "status": {
+      "notWritten": "Not Written",
+      "syncedActive": "Synced & Active",
+      "writtenToCodex": "Written to Codex",
+      "connected": "Connected {{label}}",
+      "notLoggedIn": "Not Logged In"
+    },
+    "diagnostics": {
+      "noAccount": "No OpenAI account connected. Please log in with ChatGPT first.",
+      "disabled": "OpenAI service is currently disabled. Enable it to sync to Codex.",
+      "notWritten": "Current OpenAI configuration has not been written to Codex.",
+      "otherProvider": "Codex is currently using another provider. Re-sync OpenAI to switch.",
+      "configured": "Connected to OpenAI with {{label}}, default model set to {{model}}.",
+      "connectedButNotWritten": "OpenAI account connected, but configuration not yet written to Codex.",
+      "writtenButNotActive": "OpenAI configuration written to Codex, but not yet active as the current provider.",
+      "waiting": "Waiting for OpenAI and Codex status to return."
+    },
+    "success": {
+      "loginWithProfile": "Completed OpenAI login with {{label}}.",
+      "loginCompleted": "Completed OpenAI login.",
+      "refreshed": "Refreshed OpenAI and Codex status.",
+      "disabled": "OpenAI service has been disabled.",
+      "enabled": "OpenAI service has been enabled.",
+      "synced": "Synced OpenAI configuration to Codex ({{path}}).",
+      "importedAuth": "Imported current local Codex login credentials.",
+      "loginPageOpened": "Browser authorization page opened. Please complete ChatGPT login.",
+      "profileActivated": "Set this account as the current OpenAI login account.",
+      "profileRefreshed": "Refreshed this account's login status.",
+      "profileRemoved": "Account has been removed.",
+      "defaultModelSet": "Set {{modelId}} as default model. Please continue syncing to Codex."
+    },
+    "error": {
+      "presetNotLoaded": "OpenAI service configuration has not finished loading.",
+      "initFailed": "Failed to initialize OpenAI service.",
+      "pollLoginFailed": "Failed to poll Codex login status.",
+      "refreshFailed": "Failed to refresh status.",
+      "toggleFailed": "Failed to update service status.",
+      "enableBeforeSync": "Please enable OpenAI service before syncing to Codex.",
+      "syncFailed": "Failed to sync to Codex.",
+      "importAuthFailed": "Failed to import current login credentials.",
+      "loginFailed": "Failed to open ChatGPT login.",
+      "activateProfileFailed": "Failed to switch account.",
+      "refreshProfileFailed": "Failed to refresh login status.",
+      "removeProfileFailed": "Failed to remove account.",
+      "setDefaultModelFailed": "Failed to set default model.",
+      "openWebsiteFailed": "Failed to open website.",
+      "modelNotFound": "Model not found: {{modelId}}"
+    },
+    "section": {
+      "providerService": "Provider Service",
+      "accountConnection": "Account Connection",
+      "serviceConfig": "Service Configuration",
+      "models": "Models",
+      "diagnostics": "Diagnostics"
+    },
+    "field": {
+      "currentStatus": "Current Status",
+      "currentAccount": "Current account: {{label}}",
+      "currentAccount2": "Current Account",
+      "pleaseLogin": "Please complete ChatGPT login first",
+      "syncStatus": "Sync Status",
+      "syncActiveHint": "OpenAI is active as the current Codex provider",
+      "syncPendingHint": "Will be written to ~/.codex/config.toml after sync",
+      "authMethod": "Auth Method",
+      "protocol": "Protocol",
+      "apiUrl": "API URL",
+      "officialSite": "Official Site",
+      "codexConfigFile": "Codex Config File",
+      "authFile": "Auth File",
+      "defaultModel": "Default model: ",
+      "lastLoginFlow": "Last Login Flow",
+      "redirectUri": "Redirect URI: ",
+      "importedAccount": "Imported account: ",
+      "lastUpdated": "Last updated: ",
+      "accountPlan": "Account Plan",
+      "currentProvider": "Current Provider",
+      "currentModel": "Current Model"
+    },
+    "button": {
+      "website": "Website",
+      "refreshStatus": "Refresh Status",
+      "syncToCodex": "Sync to Codex",
+      "loginWithChatGPT": "Login with ChatGPT",
+      "importCodexAuth": "Import Codex Auth",
+      "reopenAuthPage": "Reopen Auth Page",
+      "refreshModelStatus": "Refresh Model Status",
+      "currentDefault": "Current Default",
+      "setAsDefault": "Set as Default",
+      "currentlyUsed": "Currently Used",
+      "setAsCurrent": "Set as Current",
+      "refreshToken": "Refresh Token",
+      "remove": "Remove"
+    },
+    "badge": {
+      "official": "Official",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "codexLogin": "Codex Login",
+      "defaultModel": "Default Model",
+      "currentAccount": "Current Account",
+      "codexActive": "Codex Active"
+    },
+    "value": {
+      "codexLogin": "Codex Login",
+      "notSet": "Not Set",
+      "unknown": "Unknown"
+    },
+    "loading": {
+      "readingAuthStatus": "Reading OpenAI login status...",
+      "preparingService": "Preparing OpenAI Service",
+      "autoInitialize": "Warwolf will automatically initialize the OpenAI Provider and read the current Codex login and model status."
+    },
+    "note": {
+      "unsupported": "Third-party compatible channels, API key entry, and custom Providers are not supported."
+    },
+    "description": {
+      "onlyOpenAi": "Current version only supports the official OpenAI channel, authorized through Codex login.",
+      "openAiResponses": "Official OpenAI Responses service. Warwolf only syncs configuration to `~/.codex` via Codex login.",
+      "codexLoginOnly": "Only supports connecting to OpenAI via Codex login. Manual API key entry is not supported.",
+      "readOnlyConfig": "This area only displays read-only configuration of the current OpenAI service. Manual modification is not supported.",
+      "modelCatalog": "Uses the official OpenAI model catalog. Only setting the default model is allowed; manual adding, deleting, or editing is not supported.",
+      "diagnostics": "Aggregates OpenAI login, Codex sync, and current usage status to help you quickly determine availability."
+    },
+    "modelGroup": {
+      "gptImage": "GPT Image",
+      "other": "Other Models"
+    },
+    "modelTag": {
+      "general": "General",
+      "chat": "Chat",
+      "reasoning": "Reasoning",
+      "coding": "Coding",
+      "image": "Image"
+    },
+    "source": {
+      "browserLogin": "Browser Login",
+      "importAuthJson": "Import auth.json"
+    },
+    "loginStatus": {
+      "loggedIn": "Logged In",
+      "notLoggedIn": "Not Logged In",
+      "pending": "Waiting for Authorization",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "dialog": {
+      "removeTitle": "Remove account",
+      "removeDescription": "Remove this OpenAI login account? You can re-add it later by logging in again."
+    }
+  },
+  "openclaw": {
+    "button": {
+      "close": "Close",
+      "uninstall": "Uninstall",
+      "stop": "Stop",
+      "starting": "Starting...",
+      "startService": "Start OpenClaw Service",
+      "install": "Install OpenClaw",
+      "reinstall": "Reinstall OpenClaw",
+      "installing": "Installing...",
+      "cancel": "Cancel",
+      "confirmUninstall": "Confirm Uninstall",
+      "viewDocs": "View Docs",
+      "openDashboard": "Open Dashboard"
+    },
+    "status": {
+      "running": "Running",
+      "checking": "Checking OpenClaw installation status...",
+      "needsUpdate": "OpenClaw Needs Update",
+      "notInstalled": "OpenClaw Not Installed",
+      "uninstallComplete": "Uninstall Complete",
+      "uninstalling": "Uninstalling..."
+    },
+    "error": {
+      "installFailed": "Installation failed. Please check the install logs below.",
+      "installTimeout": "Installation timed out",
+      "uninstallFailed": "Uninstall failed. Please check the uninstall logs below.",
+      "uninstallTimeout": "Uninstall timed out",
+      "startFailed": "Failed to start. Please check the install logs.",
+      "stopFailed": "Failed to stop service"
+    },
+    "section": {
+      "installProgress": "Install Progress",
+      "uninstallProgress": "Uninstall Progress",
+      "tips": "Tips"
+    },
+    "field": {
+      "installPath": "Install Path"
+    },
+    "hint": {
+      "apiKeyRequired": "OpenClaw uses your configured provider API keys to process requests. Please ensure they are set up correctly.",
+      "tokenConsumption": "API tokens will be consumed after starting. Usage depends on conversation frequency and message length."
+    },
+    "confirm": {
+      "uninstall": "Are you sure you want to uninstall OpenClaw? Running services will be stopped."
+    },
+    "description": {
+      "installed": "Powered by Warwolf providers, OpenClaw is your personal AI assistant available on WeChat, Feishu, DingTalk, QQ, and more.",
+      "needsMigration": "An older version of OpenClaw installed via npm was detected. Please reinstall to get the latest official version.",
+      "notInstalled": "OpenClaw is not installed on your system. Please install it first to use this feature.",
+      "uninstallSuccess": "OpenClaw has been successfully uninstalled.",
+      "uninstalling": "Uninstalling OpenClaw, please wait..."
+    }
+  },
   "settings": {
     "title": "Settings",
     "general": "General",
@@ -10,5 +285,123 @@
     "about": "About",
     "loading": "Loading desktop settings...",
     "comingSoon": "Coming soon"
+  },
+  "agent": {
+    "status": {
+      "uninstalling": "Uninstalling",
+      "installing": "Installing",
+      "installFailed": "Install Failed",
+      "starting": "Starting",
+      "startFailed": "Start Failed",
+      "installedRunning": "Installed \u00b7 Running",
+      "installedStopped": "Installed \u00b7 Stopped",
+      "notInstalled": "Not Installed",
+      "installComplete": "Install Complete",
+      "serviceReady": "Service Ready",
+      "notStarted": "Not Started",
+      "notStartedService": "Not Started",
+      "loading": "Loading",
+      "fetchFailed": "Fetch Failed"
+    },
+    "button": {
+      "installing": "Installing...",
+      "retryInstall": "Retry Install OpenClaw",
+      "install": "Install OpenClaw",
+      "starting": "Starting...",
+      "retryStart": "Retry Start OpenClaw Service",
+      "startService": "Start OpenClaw Service",
+      "openDashboard": "Open OpenClaw Chat",
+      "uninstall": "Uninstall",
+      "restart": "Restart",
+      "loading": "Loading...",
+      "reload": "Reload"
+    },
+    "error": {
+      "fetchSuffix": " failed: ",
+      "uninstallFailedCheckLog": "Uninstall failed. Please check the uninstall log below.",
+      "installFailedCheckLog": "Install failed. Please check the install log below and retry.",
+      "startFailedCheckLog": "Start failed. Please check the start log below and retry.",
+      "stateFetchFailed": "OpenClaw status fetch failed: {{message}}",
+      "startServiceFailed": "Failed to start OpenClaw service"
+    },
+    "message": {
+      "serviceDetectedRunning": "OpenClaw service detected as running",
+      "installDetected": "OpenClaw installation detected",
+      "uninstalling": "Uninstalling OpenClaw...",
+      "installing": "Installing OpenClaw...",
+      "uninstallComplete": "OpenClaw uninstall complete",
+      "pleaseInstall": "Please install OpenClaw first.",
+      "startingService": "Starting OpenClaw service...",
+      "installSuccessStartService": "\u2705 Install succeeded. Please start the OpenClaw service.",
+      "serviceReadyOpenDashboard": "\u2705 Service started. You can open the OpenClaw chat page.",
+      "serviceReadyOpenDashboardShort": "Service is ready. You can open the OpenClaw chat page.",
+      "cleaningAndStarting": "Cleaning up old OpenClaw processes and starting service...",
+      "openingDashboard": "Opening OpenClaw chat page...",
+      "restarting": "Restarting OpenClaw service...",
+      "agentInPlanning": "This Agent is still in the planning stage."
+    },
+    "section": {
+      "step1Install": "Step 1: Install OpenClaw",
+      "step2Start": "Step 2: Start OpenClaw Service",
+      "installLog": "Install Log",
+      "startLog": "Start Log",
+      "uninstallLog": "Uninstall Log",
+      "realtimeLog": "Realtime Log",
+      "installStartPipeline": "Install & Start Pipeline"
+    },
+    "field": {
+      "installMode": "Install Mode",
+      "version": "Version",
+      "nodeVersion": "Node Version",
+      "commandPath": "Command Path",
+      "runningStatus": "Running Status",
+      "memoryUsage": "Memory Usage",
+      "uptime": "Uptime",
+      "openclawVersion": "OpenClaw Version",
+      "dashboardPage": "Chat Page",
+      "dashboardDynamic": "Dynamically generated by OpenClaw runtime",
+      "serviceHint": "Service Hint",
+      "waitingForStartOrDetect": "Waiting for start or detection result",
+      "lineCount": "({{count}} lines)"
+    },
+    "state": {
+      "running": "Running",
+      "starting": "Starting",
+      "notRunning": "Not Running",
+      "modelCount": "Models {{count}}",
+      "connectedWarwolf": "Connected to Warwolf",
+      "pendingWarwolf": "Pending Warwolf"
+    },
+    "activity": {
+      "starting": "Starting",
+      "notStarted": "Not Started",
+      "processing": "Processing",
+      "idle": "Idle",
+      "running": "Running"
+    },
+    "empty": {
+      "noInstallLogs": "No install logs",
+      "noStartLogs": "No start logs",
+      "noUninstallLogs": "No uninstall logs",
+      "noLogs": "No logs"
+    },
+    "description": {
+      "installDescription": "Installation will first try to reuse an existing OpenClaw on the machine; if no usable version is detected, it will be installed via npm.",
+      "startDescription": "Start the OpenClaw service after installation. Once the service is ready, you can go to the chat page to check actual availability.",
+      "openSourceAssistant": "Open-source personal AI assistant",
+      "agentDetailTemplate": "Unified Agent detail template"
+    },
+    "loading": {
+      "readConnectStatus": "Reading OpenClaw connect status",
+      "readSetupOverview": "Reading OpenClaw setup overview",
+      "readRuntimeSnapshot": "Reading OpenClaw runtime snapshot",
+      "readInstallPipeline": "Reading OpenClaw install pipeline status",
+      "readStartPipeline": "Reading OpenClaw start pipeline status",
+      "readUninstallPipeline": "Reading OpenClaw uninstall pipeline status",
+      "loadingState": "Loading OpenClaw current state...",
+      "refreshingStatus": "Refreshing OpenClaw status...",
+      "readingAgentState": "Reading Agent current state \u00b7 Will switch to live view once loaded",
+      "readingInstallStartStatus": "Reading OpenClaw install and start status. Realtime logs and diagnostics will be shown once loaded."
+    }
   }
 }

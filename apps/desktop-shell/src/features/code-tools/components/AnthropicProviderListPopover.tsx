@@ -1,4 +1,5 @@
 import { HelpCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -12,6 +13,7 @@ interface AnthropicProviderListPopoverProps {
 export function AnthropicProviderListPopover({
   providerNames,
 }: AnthropicProviderListPopoverProps) {
+  const { t } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -21,7 +23,7 @@ export function AnthropicProviderListPopover({
         />
       </TooltipTrigger>
       <TooltipContent side="right" className="w-[220px] p-3">
-        <div className="mb-2 text-[12px] font-medium">支持的服务商</div>
+        <div className="mb-2 text-[12px] font-medium">{t("provider.popover.supported")}</div>
         <div className="flex flex-col gap-1.5">
           {providerNames.length > 0 ? (
             providerNames.map((name) => (
@@ -31,7 +33,7 @@ export function AnthropicProviderListPopover({
             ))
           ) : (
             <div className="text-[12px] text-muted-foreground">
-              暂无 Anthropic 兼容服务商
+              {t("provider.popover.noAnthropicProviders")}
             </div>
           )}
         </div>

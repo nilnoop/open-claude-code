@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentWorkbenchState } from "@/types/agent";
 import { cn } from "@/lib/utils";
 import { RealtimeLogCard } from "./RealtimeLogCard";
@@ -60,6 +61,7 @@ export function AgentLifecycleSection({
   preferredTab,
   preferredTabNonce,
 }: AgentLifecycleSectionProps) {
+  const { t } = useTranslation();
   const isSupported = workbench.kind === "supported";
   const loadingWorkbench = workbench.kind === "loading";
 
@@ -74,7 +76,7 @@ export function AgentLifecycleSection({
     if (installStep) {
       next.push({
         key: "install",
-        label: "安装日志",
+        label: t("agent.section.installLog"),
         hint: installStep.hint,
         logs: installStep.logs,
         emptyText: installStep.emptyText,
@@ -90,7 +92,7 @@ export function AgentLifecycleSection({
     if (startStep) {
       next.push({
         key: "start",
-        label: "启动日志",
+        label: t("agent.section.startLog"),
         hint: startStep.hint,
         logs: startStep.logs,
         emptyText: startStep.emptyText,
@@ -110,10 +112,10 @@ export function AgentLifecycleSection({
     ) {
       next.push({
         key: "uninstall",
-        label: "卸载日志",
+        label: t("agent.section.uninstallLog"),
         hint: detail.uninstallStatus.hint,
         logs: detail.uninstallStatus.logs,
-        emptyText: "暂无卸载日志",
+        emptyText: t("agent.empty.noUninstallLogs"),
         running: detail.uninstallStatus.running,
         finished: detail.uninstallStatus.finished,
         success: detail.uninstallStatus.success,
@@ -183,16 +185,16 @@ export function AgentLifecycleSection({
       <section className="rounded-2xl border border-border bg-card p-4">
         <div className="mb-3">
           <div className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
-            实时日志
+            {t("agent.section.realtimeLog")}
           </div>
           <h4 className="text-sm font-semibold text-foreground mt-1">
-            安装与启动流水线
+            {t("agent.section.installStartPipeline")}
           </h4>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
           {loadingWorkbench
-            ? "正在读取 OpenClaw 安装与启动状态，完成后会展示实时日志与诊断信息。"
-            : "该 Agent 仍处于规划阶段。"}
+            ? t("agent.loading.readingInstallStartStatus")
+            : t("agent.message.agentInPlanning")}
         </p>
       </section>
     );

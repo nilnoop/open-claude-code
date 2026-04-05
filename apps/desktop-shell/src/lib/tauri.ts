@@ -714,22 +714,34 @@ export async function getDesktopApiBase(): Promise<string> {
   return apiBasePromise;
 }
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(
+  path: string,
+  init?: RequestInit,
+  timeout = 30_000
+): Promise<T> {
   const base = await getDesktopApiBase();
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
 
-  if (!response.ok) {
-    throw new Error(await readError(response));
+  try {
+    const response = await fetch(`${base}${path}`, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(await readError(response));
+    }
+
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return (await response.json()) as T;
 }
 
 export async function getBootstrap(): Promise<DesktopBootstrap> {
@@ -1042,6 +1054,34 @@ export async function runScheduledTaskNow(
   );
 }
 
+export async function deleteScheduledTask(
+  taskId: string
+): Promise<{ deleted: boolean }> {
+  return fetchJson<{ deleted: boolean }>(
+    `/api/desktop/scheduled/${taskId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function updateScheduledTask(
+  taskId: string,
+  payload: {
+    title?: string;
+    prompt?: string;
+    schedule?: DesktopScheduledSchedule;
+    target_session_id?: string | null;
+    enabled?: boolean;
+  }
+): Promise<DesktopScheduledTaskResponse> {
+  return fetchJson<DesktopScheduledTaskResponse>(
+    `/api/desktop/scheduled/${taskId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
 export async function getDispatch(): Promise<DesktopDispatchResponse> {
   return fetchJson<DesktopDispatchResponse>("/api/desktop/dispatch");
 }
@@ -1081,6 +1121,49 @@ export async function deliverDispatchItem(
     {
       method: "POST",
       body: JSON.stringify({}),
+    }
+  );
+}
+
+export async function deleteDispatchItem(
+  itemId: string
+): Promise<{ deleted: boolean }> {
+  return fetchJson<{ deleted: boolean }>(
+    `/api/desktop/dispatch/items/${itemId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function updateDispatchItem(
+  itemId: string,
+  payload: {
+    title?: string;
+    body?: string;
+    priority?: DesktopDispatchPriority;
+    target_session_id?: string | null;
+  }
+): Promise<DesktopDispatchItemResponse> {
+  return fetchJson<DesktopDispatchItemResponse>(
+    `/api/desktop/dispatch/items/${itemId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function forwardPermissionDecision(
+  sessionId: string,
+  payload: {
+    requestId: string;
+    decision: string;
+  }
+): Promise<{ forwarded: boolean }> {
+  return fetchJson<{ forwarded: boolean }>(
+    `/api/desktop/sessions/${sessionId}/permission`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     }
   );
 }
