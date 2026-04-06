@@ -1,31 +1,28 @@
-import { useAppSelector, useAppDispatch } from "@/store";
-import {
-  setEnabledApps,
-  setDisabledApps,
-  setPinnedApps,
-} from "@/store/slices/minapps";
 import type { MinAppType } from "@/types/minapp";
+import { useMinappsStore } from "@/state/minapps-store";
 
 /**
  * Hook for reading and managing the MinApp catalog.
  * Mirrors cherry-studio's useMinapps.ts
  */
 export function useMinapps() {
-  const dispatch = useAppDispatch();
-  const minapps = useAppSelector((s) => s.minapps.enabled);
-  const disabled = useAppSelector((s) => s.minapps.disabled);
-  const pinned = useAppSelector((s) => s.minapps.pinned);
+  const minapps = useMinappsStore((state) => state.enabled);
+  const disabled = useMinappsStore((state) => state.disabled);
+  const pinned = useMinappsStore((state) => state.pinned);
+  const setEnabledApps = useMinappsStore((state) => state.setEnabledApps);
+  const setDisabledApps = useMinappsStore((state) => state.setDisabledApps);
+  const setPinnedApps = useMinappsStore((state) => state.setPinnedApps);
 
   const updateMinapps = (apps: MinAppType[]) => {
-    dispatch(setEnabledApps(apps));
+    setEnabledApps(apps);
   };
 
   const updateDisabledMinapps = (apps: MinAppType[]) => {
-    dispatch(setDisabledApps(apps));
+    setDisabledApps(apps);
   };
 
   const updatePinnedMinapps = (apps: MinAppType[]) => {
-    dispatch(setPinnedApps(apps));
+    setPinnedApps(apps);
   };
 
   return {

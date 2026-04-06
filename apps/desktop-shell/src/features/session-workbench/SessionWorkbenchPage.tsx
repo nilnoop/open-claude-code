@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAppDispatch } from "@/store";
 import { SessionWorkbenchSidebar } from "./SessionWorkbenchSidebar";
 import { SessionWorkbenchTerminal } from "./SessionWorkbenchTerminal";
 import { useSessionLifecycle } from "./useSessionLifecycle";
 import { sessionWorkbenchKeys } from "./api/query";
-import { updateTabSession } from "@/store/slices/tabs";
 import { workbenchKeys } from "@/features/workbench/api/query";
 import {
   appendMessage,
@@ -16,6 +14,7 @@ import {
   type DesktopSessionDetail,
 } from "@/lib/tauri";
 import { useSettingsStore } from "@/state/settings-store";
+import { useTabsStore } from "@/state/tabs-store";
 
 interface SessionWorkbenchPageProps {
   tabId: string;
@@ -32,10 +31,10 @@ export function SessionWorkbenchPage({
   syncTabState = true,
   autoSelectFallbackSession = true,
 }: SessionWorkbenchPageProps) {
-  const dispatch = useAppDispatch();
   const showSidebarPreference = useSettingsStore(
     (state) => state.showSessionSidebar
   );
+  const updateTabSession = useTabsStore((state) => state.updateTabSession);
   const queryClient = useQueryClient();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     sessionId ?? null
@@ -146,19 +145,17 @@ export function SessionWorkbenchPage({
   useEffect(() => {
     if (!syncTabState) return;
     if (!activeSessionId) return;
-    dispatch(
-      updateTabSession({
-        id: tabId,
-        sessionId: activeSessionId,
-        title: activeSessionQuery.data?.title,
-      })
-    );
+    updateTabSession({
+      id: tabId,
+      sessionId: activeSessionId,
+      title: activeSessionQuery.data?.title,
+    });
   }, [
     activeSessionId,
     activeSessionQuery.data?.title,
-    dispatch,
     syncTabState,
     tabId,
+    updateTabSession,
   ]);
 
   const createSessionMutation = useMutation({

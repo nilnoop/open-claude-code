@@ -11,19 +11,6 @@ import {
   Terminal,
   Settings,
 } from "lucide-react";
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  addTab,
-  setActiveTab,
-  removeTab,
-  sanitizePersistedTabs,
-  updateTabTitle,
-  type Tab,
-} from "@/store/slices/tabs";
-import {
-  removeOpenedApp,
-  setCurrentAppId,
-} from "@/store/slices/minapps";
 import { useTheme } from "@/components/ThemeProvider";
 import {
   getAllMinApps,
@@ -44,6 +31,8 @@ import {
   parseHomeRouteState,
 } from "@/features/workbench/tab-helpers";
 import { cn } from "@/lib/utils";
+import { useTabsStore, type Tab } from "@/state/tabs-store";
+import { useMinappsStore } from "@/state/minapps-store";
 
 /**
  * Dual-row top bar — Claude Code desktop style:
@@ -55,21 +44,23 @@ import { cn } from "@/lib/utils";
  */
 export function TabBar() {
   const { t } = useTranslation();
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { tabs, activeTabId } = useAppSelector((s) => s.tabs);
-  const openedKeepAliveApps = useAppSelector(
-    (s) => s.minapps.openedKeepAliveApps
+  const tabs = useTabsStore((state) => state.tabs);
+  const activeTabId = useTabsStore((state) => state.activeTabId);
+  const addTab = useTabsStore((state) => state.addTab);
+  const setActiveTab = useTabsStore((state) => state.setActiveTab);
+  const removeTab = useTabsStore((state) => state.removeTab);
+  const updateTabTitle = useTabsStore((state) => state.updateTabTitle);
+  const openedKeepAliveApps = useMinappsStore(
+    (state) => state.openedKeepAliveApps
   );
+  const removeOpenedApp = useMinappsStore((state) => state.removeOpenedApp);
+  const setCurrentAppId = useMinappsStore((state) => state.setCurrentAppId);
   const { theme, setThemeMode } = useTheme();
 
   const pathname = location.pathname;
   const homeRoute = parseHomeRouteState(location.search);
-
-  useEffect(() => {
-    dispatch(sanitizePersistedTabs());
-  }, [dispatch]);
 
   // ─── Derived nav state ────────────────────────────────────────
   const isOnHome = pathname === "/home" || pathname === "/";
@@ -102,27 +93,25 @@ export function TabBar() {
     const title = resolveMinAppTitle(minAppId);
     const existingTab = tabs.find((tab) => tab.id === tabId);
 
-    dispatch(setCurrentAppId(minAppId));
+    setCurrentAppId(minAppId);
 
     if (!existingTab) {
-      dispatch(
-        addTab({
-          id: tabId,
-          type: "minapp",
-          path: pathname,
-          title,
-          closable: true,
-        })
-      );
+      addTab({
+        id: tabId,
+        type: "minapp",
+        path: pathname,
+        title,
+        closable: true,
+      });
       return;
     }
 
     if (existingTab.title !== title) {
-      dispatch(updateTabTitle({ id: tabId, title }));
+      updateTabTitle({ id: tabId, title });
     }
 
-    dispatch(setActiveTab(tabId));
-  }, [dispatch, pathname, openedKeepAliveApps, tabs]);
+    setActiveTab(tabId);
+  }, [addTab, openedKeepAliveApps, pathname, setActiveTab, setCurrentAppId, tabs, updateTabTitle]);
 
   // ─── Row 1 nav handlers ──────────────────────────────────────
   const handleNavHome = () => {
@@ -145,9 +134,9 @@ export function TabBar() {
   const handleTabSelect = (tab: Tab) => {
     const minAppId = getMinAppIdFromPath(tab.path);
     if (minAppId) {
-      dispatch(setCurrentAppId(minAppId));
+      setCurrentAppId(minAppId);
     }
-    dispatch(setActiveTab(tab.id));
+    setActiveTab(tab.id);
     navigate(tab.path);
   };
 
@@ -170,18 +159,18 @@ export function TabBar() {
 
     const closingAppId = getMinAppIdFromPath(closingTab.path);
     if (closingAppId) {
-      dispatch(removeOpenedApp(closingAppId));
+      removeOpenedApp(closingAppId);
       clearWebviewState(closingAppId);
     }
 
-    dispatch(removeTab(tabId));
+    removeTab(tabId);
 
     if (nextTab) {
       const nextAppId = getMinAppIdFromPath(nextTab.path);
       if (nextAppId) {
-        dispatch(setCurrentAppId(nextAppId));
+        setCurrentAppId(nextAppId);
       }
-      dispatch(setActiveTab(nextTab.id));
+      setActiveTab(nextTab.id);
       navigate(nextTab.path);
     } else {
       // No tabs left, go home
