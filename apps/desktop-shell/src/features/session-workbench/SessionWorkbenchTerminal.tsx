@@ -67,8 +67,8 @@ export function SessionWorkbenchTerminal({
   const setPendingPermission = usePermissionsStore(
     (state) => state.setPendingPermission
   );
-  const resolvePermission = usePermissionsStore(
-    (state) => state.resolvePermission
+  const clearPendingPermission = usePermissionsStore(
+    (state) => state.clearPendingPermission
   );
   const permissionMode = useAppSelector((s) => s.settings.permissionMode);
   const [scrollNode, setScrollNode] = useState<HTMLDivElement | null>(null);
@@ -103,27 +103,29 @@ export function SessionWorkbenchTerminal({
   const handlePermissionDecision = useCallback(
     (action: PermissionAction) => {
       if (pendingPermission) {
-        resolvePermission({
-          requestId: pendingPermission.id,
-          decision: action,
-        });
-        // Forward decision to Tauri backend
         if (session?.id) {
           void forwardPermissionDecision(session.id, {
             requestId: pendingPermission.id,
             decision: action,
-          }).catch((error) => {
-            console.warn("Failed to forward permission decision to backend", {
-              sessionId: session.id,
-              requestId: pendingPermission.id,
-              decision: action,
-              error,
+          })
+            .then(() => {
+              clearPendingPermission(pendingPermission.id);
+            })
+            .catch((error) => {
+              console.warn("Failed to forward permission decision to backend", {
+                sessionId: session.id,
+                requestId: pendingPermission.id,
+                decision: action,
+                error,
+              });
             });
-          });
+          return;
         }
+
+        clearPendingPermission(pendingPermission.id);
       }
     },
-    [pendingPermission, resolvePermission, session?.id]
+    [clearPendingPermission, pendingPermission, session?.id]
   );
 
   const addSystemMessage = useCallback((text: string) => {

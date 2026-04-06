@@ -1,16 +1,12 @@
 import { create } from "zustand";
 import type {
-  PermissionAction,
   PermissionRequest,
 } from "@/features/session-workbench/permission-types";
 
 export interface PermissionsState {
   pendingRequest: PermissionRequest | null;
   setPendingPermission: (request: PermissionRequest | null) => void;
-  resolvePermission: (payload: {
-    requestId: string;
-    decision: PermissionAction;
-  }) => void;
+  clearPendingPermission: (requestId: string) => void;
 }
 
 export const initialState = {
@@ -20,7 +16,7 @@ export const initialState = {
 export const usePermissionsStore = create<PermissionsState>((set, get) => ({
   ...initialState,
   setPendingPermission: (pendingRequest) => set({ pendingRequest }),
-  resolvePermission: ({ requestId }) => {
+  clearPendingPermission: (requestId) => {
     const request = get().pendingRequest;
 
     if (!request || request.id !== requestId) {
