@@ -12,16 +12,11 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-
-export type PermissionAction = "allow" | "deny" | "allow_always";
-
-export interface PermissionRequest {
-  id: string;
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  riskLevel: "low" | "medium" | "high";
-  description?: string;
-}
+import type {
+  PermissionAction,
+  PermissionRequest,
+} from "./permission-types";
+export type { PermissionAction, PermissionRequest } from "./permission-types";
 
 interface PermissionDialogProps {
   request: PermissionRequest;

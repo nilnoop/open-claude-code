@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type {
   PermissionAction,
   PermissionRequest,
-} from "@/features/session-workbench/PermissionDialog";
+} from "@/features/session-workbench/permission-types";
 
 export interface PermissionRule {
   toolName: string;
