@@ -14,11 +14,9 @@ import { ContentHeader } from "./ContentHeader";
 import { VirtualizedMessageList } from "./VirtualizedMessageList";
 import { InputBar } from "./InputBar";
 import { StatusLine } from "./StatusLine";
-import {
-  PermissionDialog,
-  type PermissionAction,
-} from "./PermissionDialog";
+import { PermissionDialog } from "./PermissionDialog";
 import { executeCommand, type CommandContext } from "./commandExecutor";
+import type { PermissionAction } from "./permission-types";
 import { SubagentPanel, extractSubagents } from "./SubagentPanel";
 import { exportAsMarkdown, exportAsJson } from "./sessionExport";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
@@ -73,10 +71,8 @@ export function SessionWorkbenchTerminal({
     (state) => state.resolvePermission
   );
   const permissionMode = useAppSelector((s) => s.settings.permissionMode);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollNode, setScrollNode] = useState<HTMLDivElement | null>(null);
   const scrollCallbackRef = useCallback((node: HTMLDivElement | null) => {
-    scrollRef.current = node;
     setScrollNode(node);
   }, []);
   const [showDemo, setShowDemo] = useState(false);
@@ -116,8 +112,13 @@ export function SessionWorkbenchTerminal({
           void forwardPermissionDecision(session.id, {
             requestId: pendingPermission.id,
             decision: action,
-          }).catch(() => {
-            // Backend may not be ready yet — decision is still stored locally
+          }).catch((error) => {
+            console.warn("Failed to forward permission decision to backend", {
+              sessionId: session.id,
+              requestId: pendingPermission.id,
+              decision: action,
+              error,
+            });
           });
         }
       }

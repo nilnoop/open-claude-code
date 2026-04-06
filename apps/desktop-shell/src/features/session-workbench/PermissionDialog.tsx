@@ -16,7 +16,6 @@ import type {
   PermissionAction,
   PermissionRequest,
 } from "./permission-types";
-export type { PermissionAction, PermissionRequest } from "./permission-types";
 
 interface PermissionDialogProps {
   request: PermissionRequest;

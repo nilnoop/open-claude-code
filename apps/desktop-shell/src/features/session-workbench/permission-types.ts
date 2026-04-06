@@ -7,3 +7,8 @@ export interface PermissionRequest {
   riskLevel: "low" | "medium" | "high";
   description?: string;
 }
+
+declare module "./PermissionDialog" {
+  export type PermissionAction = import("./permission-types").PermissionAction;
+  export type PermissionRequest = import("./permission-types").PermissionRequest;
+}
