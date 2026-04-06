@@ -35,20 +35,20 @@ use tokio::time::{sleep, Duration};
 use tools::GlobalToolRegistry;
 
 mod codex_auth;
-mod provider_hub;
+mod managed_auth;
+mod oauth_runtime;
 
 pub use codex_auth::{
     DesktopCodexAuthOverview, DesktopCodexAuthSource, DesktopCodexInstallationRecord,
     DesktopCodexLoginSessionSnapshot, DesktopCodexLoginSessionStatus, DesktopCodexProfileSummary,
 };
-pub use provider_hub::{
-    DesktopCodexLiveProvider, DesktopCodexRuntimeState, DesktopManagedProvider,
-    DesktopManagedProviderUpsertInput, DesktopOpenClawConfigWriteResult,
-    DesktopOpenClawDefaultModel, DesktopOpenClawLiveProvider, DesktopOpenClawRuntimeState,
-    DesktopProviderConnectionStatus, DesktopProviderConnectionTestInput,
-    DesktopProviderConnectionTestResult, DesktopProviderDeleteResult, DesktopProviderModel,
-    DesktopProviderPreset, DesktopProviderRuntimeTarget, DesktopProviderSyncResult,
+pub use managed_auth::{
+    DesktopCodeToolLaunchProfile, DesktopManagedAuthAccount, DesktopManagedAuthAccountStatus,
+    DesktopManagedAuthLoginSessionSnapshot, DesktopManagedAuthLoginSessionStatus,
+    DesktopManagedAuthProvider, DesktopManagedAuthProviderKind, DesktopManagedAuthRuntimeBinding,
+    DesktopManagedAuthRuntimeClient, DesktopManagedAuthSource,
 };
+pub use oauth_runtime::{DesktopCodexLiveProvider, DesktopCodexRuntimeState, DesktopProviderModel};
 
 pub type SessionId = String;
 
@@ -1134,13 +1134,6 @@ impl Display for DesktopStateError {
 
 impl std::error::Error for DesktopStateError {}
 
-fn map_provider_error(message: String) -> DesktopStateError {
-    if let Some(provider_id) = message.strip_prefix("managed provider not found: ") {
-        return DesktopStateError::ProviderNotFound(provider_id.to_string());
-    }
-    DesktopStateError::InvalidProvider(message)
-}
-
 impl DesktopState {
     #[must_use]
     pub fn new() -> Self {
@@ -1487,113 +1480,8 @@ impl DesktopState {
             })
     }
 
-    pub async fn provider_presets(&self) -> Vec<DesktopProviderPreset> {
-        provider_hub::provider_presets()
-    }
-
-    pub async fn managed_providers(
-        &self,
-    ) -> Result<Vec<DesktopManagedProvider>, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        tokio::task::spawn_blocking(move || provider_hub::list_managed_providers(&project_path))
-            .await
-            .map_err(|error| {
-                DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-            })?
-            .map_err(DesktopStateError::InvalidProvider)
-    }
-
-    pub async fn upsert_managed_provider(
-        &self,
-        input: DesktopManagedProviderUpsertInput,
-    ) -> Result<DesktopManagedProvider, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        tokio::task::spawn_blocking(move || {
-            provider_hub::upsert_managed_provider(&project_path, input)
-        })
-        .await
-        .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-        })?
-        .map_err(DesktopStateError::InvalidProvider)
-    }
-
-    pub async fn delete_managed_provider(
-        &self,
-        provider_id: &str,
-    ) -> Result<DesktopProviderDeleteResult, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        let provider_id = provider_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            provider_hub::delete_managed_provider(&project_path, &provider_id)
-        })
-        .await
-        .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-        })?
-        .map_err(map_provider_error)
-    }
-
-    pub async fn sync_managed_provider_to_openclaw(
-        &self,
-        provider_id: &str,
-        set_primary: bool,
-    ) -> Result<DesktopProviderSyncResult, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        let provider_id = provider_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            provider_hub::sync_provider_to_runtime(&project_path, &provider_id, set_primary)
-        })
-        .await
-        .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-        })?
-        .map_err(map_provider_error)
-    }
-
-    pub async fn import_managed_providers_from_openclaw_live(
-        &self,
-        provider_ids: Option<Vec<String>>,
-    ) -> Result<Vec<DesktopManagedProvider>, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        tokio::task::spawn_blocking(move || {
-            provider_hub::import_providers_from_openclaw_live(&project_path, provider_ids)
-        })
-        .await
-        .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-        })?
-        .map_err(DesktopStateError::InvalidProvider)
-    }
-
-    pub async fn import_managed_providers_from_codex_live(
-        &self,
-        provider_ids: Option<Vec<String>>,
-    ) -> Result<Vec<DesktopManagedProvider>, DesktopStateError> {
-        let project_path = self.current_project_path().await;
-        tokio::task::spawn_blocking(move || {
-            provider_hub::import_providers_from_codex_live(&project_path, provider_ids)
-        })
-        .await
-        .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-        })?
-        .map_err(DesktopStateError::InvalidProvider)
-    }
-
-    pub async fn openclaw_runtime_state(
-        &self,
-    ) -> Result<DesktopOpenClawRuntimeState, DesktopStateError> {
-        tokio::task::spawn_blocking(provider_hub::openclaw_runtime_state)
-            .await
-            .map_err(|error| {
-                DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
-            })?
-            .map_err(DesktopStateError::InvalidProvider)
-    }
-
     pub async fn codex_runtime_state(&self) -> Result<DesktopCodexRuntimeState, DesktopStateError> {
-        tokio::task::spawn_blocking(provider_hub::codex_runtime_state)
+        tokio::task::spawn_blocking(oauth_runtime::codex_runtime_state)
             .await
             .map_err(|error| {
                 DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
@@ -1673,43 +1561,154 @@ impl DesktopState {
             .map_err(DesktopStateError::InvalidProvider)
     }
 
-    pub async fn set_openclaw_env(
+    pub async fn managed_auth_providers(
         &self,
-        env: BTreeMap<String, String>,
-    ) -> Result<DesktopOpenClawConfigWriteResult, DesktopStateError> {
-        tokio::task::spawn_blocking(move || provider_hub::set_openclaw_env(env))
+    ) -> Result<Vec<DesktopManagedAuthProvider>, DesktopStateError> {
+        tokio::task::spawn_blocking(managed_auth::list_providers)
             .await
             .map_err(|error| {
-                DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
             })?
             .map_err(DesktopStateError::InvalidProvider)
     }
 
-    pub async fn set_openclaw_tools(
+    pub async fn managed_auth_provider(
         &self,
-        tools: serde_json::Value,
-    ) -> Result<DesktopOpenClawConfigWriteResult, DesktopStateError> {
-        tokio::task::spawn_blocking(move || provider_hub::set_openclaw_tools(tools))
+        provider_id: &str,
+    ) -> Result<DesktopManagedAuthProvider, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        tokio::task::spawn_blocking(move || managed_auth::provider_state(&provider_id))
             .await
             .map_err(|error| {
-                DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
             })?
             .map_err(DesktopStateError::InvalidProvider)
     }
 
-    pub async fn test_provider_connection(
+    pub async fn managed_auth_accounts(
         &self,
-        input: DesktopProviderConnectionTestInput,
-    ) -> Result<DesktopProviderConnectionTestResult, DesktopStateError> {
-        let project_path = self.current_project_path().await;
+        provider_id: &str,
+    ) -> Result<Vec<DesktopManagedAuthAccount>, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        tokio::task::spawn_blocking(move || managed_auth::list_accounts(&provider_id))
+            .await
+            .map_err(|error| {
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
+            })?
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn import_managed_auth_accounts(
+        &self,
+        provider_id: &str,
+    ) -> Result<Vec<DesktopManagedAuthAccount>, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        tokio::task::spawn_blocking(move || managed_auth::import_accounts(&provider_id))
+            .await
+            .map_err(|error| {
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
+            })?
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn begin_managed_auth_login(
+        &self,
+        provider_id: &str,
+    ) -> Result<DesktopManagedAuthLoginSessionSnapshot, DesktopStateError> {
+        managed_auth::begin_login(provider_id)
+            .await
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn poll_managed_auth_login(
+        &self,
+        provider_id: &str,
+        session_id: &str,
+    ) -> Result<DesktopManagedAuthLoginSessionSnapshot, DesktopStateError> {
+        managed_auth::poll_login(provider_id, session_id)
+            .await
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn set_managed_auth_default_account(
+        &self,
+        provider_id: &str,
+        account_id: &str,
+    ) -> Result<Vec<DesktopManagedAuthAccount>, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        let account_id = account_id.to_string();
         tokio::task::spawn_blocking(move || {
-            provider_hub::test_provider_connection(&project_path, input)
+            managed_auth::set_default_account(&provider_id, &account_id)
         })
         .await
         .map_err(|error| {
-            DesktopStateError::InvalidProvider(format!("provider worker crashed: {error}"))
+            DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
         })?
-        .map_err(map_provider_error)
+        .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn refresh_managed_auth_account(
+        &self,
+        provider_id: &str,
+        account_id: &str,
+    ) -> Result<Vec<DesktopManagedAuthAccount>, DesktopStateError> {
+        managed_auth::refresh_account(provider_id, account_id)
+            .await
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn remove_managed_auth_account(
+        &self,
+        provider_id: &str,
+        account_id: &str,
+    ) -> Result<Vec<DesktopManagedAuthAccount>, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        let account_id = account_id.to_string();
+        tokio::task::spawn_blocking(move || managed_auth::remove_account(&provider_id, &account_id))
+            .await
+            .map_err(|error| {
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
+            })?
+            .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn code_tool_launch_profile(
+        &self,
+        cli_tool: &str,
+        provider_id: &str,
+        model_id: &str,
+        desktop_api_base: &str,
+    ) -> Result<DesktopCodeToolLaunchProfile, DesktopStateError> {
+        let cli_tool = cli_tool.to_string();
+        let provider_id = provider_id.to_string();
+        let model_id = model_id.to_string();
+        let desktop_api_base = desktop_api_base.to_string();
+        tokio::task::spawn_blocking(move || {
+            managed_auth::build_code_tool_launch_profile(
+                &cli_tool,
+                &provider_id,
+                &model_id,
+                &desktop_api_base,
+            )
+        })
+        .await
+        .map_err(|error| {
+            DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
+        })?
+        .map_err(DesktopStateError::InvalidProvider)
+    }
+
+    pub async fn managed_auth_runtime_client(
+        &self,
+        provider_id: &str,
+    ) -> Result<DesktopManagedAuthRuntimeClient, DesktopStateError> {
+        let provider_id = provider_id.to_string();
+        tokio::task::spawn_blocking(move || managed_auth::runtime_client(&provider_id))
+            .await
+            .map_err(|error| {
+                DesktopStateError::InvalidProvider(format!("managed auth worker crashed: {error}"))
+            })?
+            .map_err(DesktopStateError::InvalidProvider)
     }
 
     pub async fn scheduled(&self) -> DesktopScheduledState {

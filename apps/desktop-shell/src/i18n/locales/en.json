@@ -29,11 +29,14 @@
     },
     "notice": {
       "bunRequired": "Running CLI tools requires Bun environment",
-      "codexAuthMissing": "OpenAI Codex has not detected available Codex login or API credentials",
-      "codexAuthHint": "If using OpenAI Codex, complete Codex login in Settings > Provider page first.",
+      "codexAuthMissing": "OpenAI Codex has not detected an available Codex OAuth login",
+      "codexAuthHint": "If using OpenAI Codex, complete Codex OAuth login in the Model Services page first.",
       "noProviders": "No providers available for",
       "thisTool": " this tool",
-      "presetsShown": ", preset directory will be displayed first."
+      "presetsShown": ". Complete the matching OAuth authorization in Model Services first.",
+      "modelOptional": "This tool does not require selecting an OAuth model here.",
+      "localCliLaunch": "{{tool}} launches with its own local CLI auth/config. Warwolf does not override its model or credentials yet.",
+      "managedAuthLaunch": "{{tool}} will prefer the OAuth runtime currently managed by Warwolf."
     },
     "button": {
       "installing": "Installing...",

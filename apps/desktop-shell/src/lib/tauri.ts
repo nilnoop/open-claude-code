@@ -163,72 +163,6 @@ export interface DesktopProviderModel {
   capability_tags: string[];
 }
 
-export type DesktopProviderRuntimeTarget = "open_claw" | "codex";
-
-export interface DesktopProviderPreset {
-  id: string;
-  name: string;
-  runtime_target: DesktopProviderRuntimeTarget;
-  category: string;
-  provider_type: string;
-  billing_category: string;
-  protocol: string;
-  base_url: string;
-  official_verified: boolean;
-  website_url: string | null;
-  description: string | null;
-  icon: string | null;
-  icon_color: string | null;
-  models: DesktopProviderModel[];
-}
-
-export interface DesktopManagedProvider {
-  id: string;
-  name: string;
-  runtime_target: DesktopProviderRuntimeTarget;
-  category: string;
-  provider_type: string;
-  billing_category: string;
-  protocol: string;
-  base_url: string;
-  api_key_masked: string | null;
-  has_api_key: boolean;
-  enabled: boolean;
-  official_verified: boolean;
-  preset_id: string | null;
-  website_url: string | null;
-  description: string | null;
-  models: DesktopProviderModel[];
-  created_at_epoch: number;
-  updated_at_epoch: number;
-}
-
-export interface DesktopOpenclawDefaultModel {
-  primary: string | null;
-  fallbacks: string[];
-}
-
-export interface DesktopOpenclawLiveProvider {
-  id: string;
-  base_url: string;
-  protocol: string;
-  model_count: number;
-  has_api_key: boolean;
-}
-
-export interface DesktopOpenclawRuntimeState {
-  config_path: string;
-  live_provider_ids: string[];
-  live_providers: DesktopOpenclawLiveProvider[];
-  default_model: DesktopOpenclawDefaultModel;
-  model_catalog_count: number;
-  env: Record<string, string>;
-  env_keys: string[];
-  tools: Record<string, unknown>;
-  tool_keys: string[];
-  health_warnings: string[];
-}
-
 export interface DesktopCodexRuntimeState {
   config_dir: string;
   auth_path: string;
@@ -308,35 +242,78 @@ export interface DesktopCodexLoginSessionSnapshot {
   updated_at_epoch: number;
 }
 
-export interface DesktopProviderSyncResult {
-  provider_id: string;
-  runtime_target: DesktopProviderRuntimeTarget;
-  config_path: string;
+export type DesktopManagedAuthProviderKind = "codex_openai" | "qwen_code";
+
+export type DesktopManagedAuthSource =
+  | "imported_auth_json"
+  | "browser_login"
+  | "device_code";
+
+export type DesktopManagedAuthAccountStatus =
+  | "ready"
+  | "expiring"
+  | "expired"
+  | "needs_reauth";
+
+export type DesktopManagedAuthLoginSessionStatus =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface DesktopManagedAuthRuntimeBinding {
+  runtime_name: string;
   auth_path: string | null;
-  model_count: number;
-  primary_applied: string | null;
+  config_path: string | null;
+  synced: boolean;
+  synced_account_id: string | null;
 }
 
-export interface DesktopProviderDeleteResult {
-  deleted: boolean;
+export interface DesktopManagedAuthProvider {
+  id: string;
+  name: string;
+  kind: DesktopManagedAuthProviderKind;
+  website_url: string | null;
+  description: string | null;
+  models: DesktopProviderModel[];
+  default_model_id: string | null;
+  account_count: number;
+  default_account_id: string | null;
+  default_account_label: string | null;
+  runtime: DesktopManagedAuthRuntimeBinding;
+}
+
+export interface DesktopManagedAuthAccount {
+  id: string;
   provider_id: string;
-  runtime_target: DesktopProviderRuntimeTarget;
-  live_config_removed: boolean;
+  email: string | null;
+  subject: string | null;
+  display_label: string;
+  plan_label: string | null;
+  auth_source: DesktopManagedAuthSource;
+  status: DesktopManagedAuthAccountStatus;
+  is_default: boolean;
+  applied_to_runtime: boolean;
+  created_at_epoch: number;
+  updated_at_epoch: number;
+  last_refresh_epoch: number | null;
+  access_token_expires_at_epoch: number | null;
+  resource_url: string | null;
 }
 
-export type DesktopProviderConnectionStatus =
-  | "success"
-  | "warning"
-  | "auth_error"
-  | "error";
-
-export interface DesktopProviderConnectionTestResult {
-  status: DesktopProviderConnectionStatus;
-  checked_url: string;
-  http_status: number | null;
-  message: string;
-  response_excerpt: string | null;
-  used_stored_api_key: boolean;
+export interface DesktopManagedAuthLoginSessionSnapshot {
+  session_id: string;
+  provider_id: string;
+  status: DesktopManagedAuthLoginSessionStatus;
+  authorize_url: string | null;
+  verification_uri: string | null;
+  verification_uri_complete: string | null;
+  user_code: string | null;
+  redirect_uri: string | null;
+  error: string | null;
+  account: DesktopManagedAuthAccount | null;
+  created_at_epoch: number;
+  updated_at_epoch: number;
 }
 
 export interface CodeToolsTerminalConfig {
@@ -349,13 +326,10 @@ export interface CodeToolSelectedModelPayload {
   providerId: string;
   providerName: string;
   providerType: string;
-  runtimeTarget: DesktopProviderRuntimeTarget;
   baseUrl: string;
   protocol: string;
   modelId: string;
   displayName: string;
-  managedProviderId: string | null;
-  presetId: string | null;
   hasStoredCredential: boolean;
 }
 
@@ -371,11 +345,6 @@ export interface RunCodeToolPayload {
 export interface CodeToolRunResult {
   success: boolean;
   message: string | null;
-}
-
-export interface DesktopOpenclawConfigWriteResult {
-  config_path: string;
-  changed: boolean;
 }
 
 export interface DesktopStorageLocation {
@@ -465,36 +434,17 @@ export interface DesktopSettingsResponse {
   settings: DesktopSettingsState;
 }
 
-export interface DesktopProviderPresetsResponse {
-  presets: DesktopProviderPreset[];
+export interface DesktopManagedAuthProvidersResponse {
+  providers: DesktopManagedAuthProvider[];
 }
 
-export interface DesktopManagedProvidersResponse {
-  providers: DesktopManagedProvider[];
+export interface DesktopManagedAuthAccountsResponse {
+  provider: DesktopManagedAuthProvider;
+  accounts: DesktopManagedAuthAccount[];
 }
 
-export interface DesktopManagedProviderResponse {
-  provider: DesktopManagedProvider;
-}
-
-export interface DesktopProviderImportResponse {
-  providers: DesktopManagedProvider[];
-}
-
-export interface DesktopProviderSyncResponse {
-  result: DesktopProviderSyncResult;
-}
-
-export interface DesktopProviderDeleteResponse {
-  result: DesktopProviderDeleteResult;
-}
-
-export interface DesktopProviderConnectionTestResponse {
-  result: DesktopProviderConnectionTestResult;
-}
-
-export interface DesktopOpenclawRuntimeResponse {
-  runtime: DesktopOpenclawRuntimeState;
+export interface DesktopManagedAuthLoginSessionResponse {
+  session: DesktopManagedAuthLoginSessionSnapshot;
 }
 
 export interface DesktopCodexRuntimeResponse {
@@ -507,10 +457,6 @@ export interface DesktopCodexAuthOverviewResponse {
 
 export interface DesktopCodexLoginSessionResponse {
   session: DesktopCodexLoginSessionSnapshot;
-}
-
-export interface DesktopOpenclawConfigWriteResponse {
-  result: DesktopOpenclawConfigWriteResult;
 }
 
 export interface DesktopSearchHit {
@@ -704,14 +650,31 @@ export async function getDesktopApiBase(): Promise<string> {
   if (!apiBasePromise) {
     apiBasePromise = (async () => {
       try {
-        return await invoke<string>("desktop_api_base");
+        return await invoke<string>("desktop_server_ensure");
       } catch {
-        return DEFAULT_API_BASE;
+        try {
+          return await invoke<string>("desktop_api_base");
+        } catch {
+          return DEFAULT_API_BASE;
+        }
       }
     })();
   }
 
   return apiBasePromise;
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("network request failed") ||
+    message.includes("load failed")
+  );
 }
 
 async function fetchJson<T>(
@@ -720,27 +683,41 @@ async function fetchJson<T>(
   timeout = 30_000
 ): Promise<T> {
   const base = await getDesktopApiBase();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const attempt = async (requestBase: string): Promise<T> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(`${requestBase}${path}`, {
+        ...init,
+        signal: init?.signal ?? controller.signal,
+        headers: {
+          Accept: "application/json",
+          ...(init?.body ? { "Content-Type": "application/json" } : {}),
+          ...(init?.headers ?? {}),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
+      return (await response.json()) as T;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   try {
-    const response = await fetch(`${base}${path}`, {
-      ...init,
-      signal: init?.signal ?? controller.signal,
-      headers: {
-        Accept: "application/json",
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
-        ...(init?.headers ?? {}),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(await readError(response));
+    return await attempt(base);
+  } catch (error) {
+    if (!isRetryableNetworkError(error)) {
+      throw error;
     }
 
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
+    apiBasePromise = null;
+    const ensuredBase = await getDesktopApiBase();
+    return attempt(ensuredBase);
   }
 }
 
@@ -827,101 +804,83 @@ export async function getSettings(): Promise<DesktopSettingsResponse> {
   return fetchJson<DesktopSettingsResponse>("/api/desktop/settings");
 }
 
-export async function getProviderPresets(): Promise<DesktopProviderPresetsResponse> {
-  return fetchJson<DesktopProviderPresetsResponse>("/api/desktop/providers/presets");
+export async function getManagedAuthProviders(): Promise<DesktopManagedAuthProvidersResponse> {
+  return fetchJson<DesktopManagedAuthProvidersResponse>("/api/desktop/auth/providers");
 }
 
-export async function getManagedProviders(): Promise<DesktopManagedProvidersResponse> {
-  return fetchJson<DesktopManagedProvidersResponse>("/api/desktop/providers");
-}
-
-export async function upsertManagedProvider(payload: {
-  id?: string | null;
-  name: string;
-  runtime_target: DesktopProviderRuntimeTarget;
-  category: string;
-  provider_type: string;
-  billing_category: string;
-  protocol: string;
-  base_url: string;
-  api_key?: string | null;
-  enabled: boolean;
-  official_verified: boolean;
-  preset_id?: string | null;
-  website_url?: string | null;
-  description?: string | null;
-  models: DesktopProviderModel[];
-}): Promise<DesktopManagedProviderResponse> {
-  return fetchJson<DesktopManagedProviderResponse>("/api/desktop/providers", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function testManagedProviderConnection(payload: {
-  id?: string | null;
-  protocol: string;
-  base_url: string;
-  api_key?: string | null;
-}): Promise<DesktopProviderConnectionTestResponse> {
-  return fetchJson<DesktopProviderConnectionTestResponse>("/api/desktop/providers/test", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function deleteManagedProvider(
+export async function getManagedAuthAccounts(
   providerId: string
-): Promise<DesktopProviderDeleteResponse> {
-  return fetchJson<DesktopProviderDeleteResponse>(
-    `/api/desktop/providers/${providerId}`,
+): Promise<DesktopManagedAuthAccountsResponse> {
+  return fetchJson<DesktopManagedAuthAccountsResponse>(
+    `/api/desktop/auth/providers/${providerId}/accounts`
+  );
+}
+
+export async function importManagedAuthAccounts(
+  providerId: string
+): Promise<DesktopManagedAuthAccountsResponse> {
+  return fetchJson<DesktopManagedAuthAccountsResponse>(
+    `/api/desktop/auth/providers/${providerId}/import`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function beginManagedAuthLogin(
+  providerId: string
+): Promise<DesktopManagedAuthLoginSessionResponse> {
+  return fetchJson<DesktopManagedAuthLoginSessionResponse>(
+    `/api/desktop/auth/providers/${providerId}/login`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function pollManagedAuthLogin(
+  providerId: string,
+  sessionId: string
+): Promise<DesktopManagedAuthLoginSessionResponse> {
+  return fetchJson<DesktopManagedAuthLoginSessionResponse>(
+    `/api/desktop/auth/providers/${providerId}/login/${sessionId}`
+  );
+}
+
+export async function setManagedAuthDefaultAccount(
+  providerId: string,
+  accountId: string
+): Promise<DesktopManagedAuthAccountsResponse> {
+  return fetchJson<DesktopManagedAuthAccountsResponse>(
+    `/api/desktop/auth/providers/${providerId}/accounts/${accountId}/default`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function refreshManagedAuthAccount(
+  providerId: string,
+  accountId: string
+): Promise<DesktopManagedAuthAccountsResponse> {
+  return fetchJson<DesktopManagedAuthAccountsResponse>(
+    `/api/desktop/auth/providers/${providerId}/accounts/${accountId}/refresh`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function removeManagedAuthAccount(
+  providerId: string,
+  accountId: string
+): Promise<DesktopManagedAuthAccountsResponse> {
+  return fetchJson<DesktopManagedAuthAccountsResponse>(
+    `/api/desktop/auth/providers/${providerId}/accounts/${accountId}`,
     {
       method: "DELETE",
     }
   );
-}
-
-export async function importLiveProviders(payload?: {
-  provider_ids?: string[];
-}): Promise<DesktopProviderImportResponse> {
-  return fetchJson<DesktopProviderImportResponse>("/api/desktop/providers/import-live", {
-    method: "POST",
-    body: JSON.stringify({
-      provider_ids: payload?.provider_ids ?? null,
-    }),
-  });
-}
-
-export async function importCodexLiveProviders(payload?: {
-  provider_ids?: string[];
-}): Promise<DesktopProviderImportResponse> {
-  return fetchJson<DesktopProviderImportResponse>("/api/desktop/codex/import-live", {
-    method: "POST",
-    body: JSON.stringify({
-      provider_ids: payload?.provider_ids ?? null,
-    }),
-  });
-}
-
-export async function syncManagedProvider(
-  providerId: string,
-  payload?: {
-    set_primary?: boolean;
-  }
-): Promise<DesktopProviderSyncResponse> {
-  return fetchJson<DesktopProviderSyncResponse>(
-    `/api/desktop/providers/${providerId}/sync`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        set_primary: payload?.set_primary ?? false,
-      }),
-    }
-  );
-}
-
-export async function getOpenclawRuntime(): Promise<DesktopOpenclawRuntimeResponse> {
-  return fetchJson<DesktopOpenclawRuntimeResponse>("/api/desktop/openclaw/runtime");
 }
 
 export async function getCodexRuntime(): Promise<DesktopCodexRuntimeResponse> {
@@ -983,24 +942,6 @@ export async function pollCodexLogin(
   return fetchJson<DesktopCodexLoginSessionResponse>(
     `/api/desktop/codex/auth/login/${sessionId}`
   );
-}
-
-export async function updateOpenclawEnv(payload: {
-  env: Record<string, string>;
-}): Promise<DesktopOpenclawConfigWriteResponse> {
-  return fetchJson<DesktopOpenclawConfigWriteResponse>("/api/desktop/openclaw/env", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateOpenclawTools(payload: {
-  tools: Record<string, unknown>;
-}): Promise<DesktopOpenclawConfigWriteResponse> {
-  return fetchJson<DesktopOpenclawConfigWriteResponse>("/api/desktop/openclaw/tools", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
 }
 
 export async function searchSessions(

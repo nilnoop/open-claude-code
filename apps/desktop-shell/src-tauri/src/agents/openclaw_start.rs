@@ -53,10 +53,14 @@ pub async fn run_start_flow(store: Arc<RwLock<HashMap<String, AgentPipelineStatu
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Step 3: Launch
-    append_log(&store, &format!(
-        "启动命令: {} gateway run --port {} --allow-unconfigured --auth none",
-        binary_path, OPENCLAW_GATEWAY_PORT
-    )).await;
+    append_log(
+        &store,
+        &format!(
+            "启动命令: {} gateway run --port {} --allow-unconfigured --auth none",
+            binary_path, OPENCLAW_GATEWAY_PORT
+        ),
+    )
+    .await;
     set_hint(&store, "正在启动 OpenClaw gateway...").await;
 
     let launch_result = launch_gateway(&binary_path);
@@ -73,10 +77,14 @@ pub async fn run_start_flow(store: Arc<RwLock<HashMap<String, AgentPipelineStatu
     }
 
     // Step 4: Probe for readiness
-    append_log(&store, &format!(
-        "等待服务就绪 (http://127.0.0.1:{})...",
-        OPENCLAW_GATEWAY_PORT
-    )).await;
+    append_log(
+        &store,
+        &format!(
+            "等待服务就绪 (http://127.0.0.1:{})...",
+            OPENCLAW_GATEWAY_PORT
+        ),
+    )
+    .await;
     set_hint(&store, "等待 OpenClaw 服务就绪...").await;
 
     let probe_url = format!("http://127.0.0.1:{}", OPENCLAW_GATEWAY_PORT);
@@ -84,10 +92,11 @@ pub async fn run_start_flow(store: Arc<RwLock<HashMap<String, AgentPipelineStatu
 
     loop {
         if start_time.elapsed().as_secs() > PROBE_TIMEOUT_SECS {
-            append_log(&store, &format!(
-                "[stderr] 等待超时 ({}秒)",
-                PROBE_TIMEOUT_SECS
-            )).await;
+            append_log(
+                &store,
+                &format!("[stderr] 等待超时 ({}秒)", PROBE_TIMEOUT_SECS),
+            )
+            .await;
             set_hint(&store, "服务启动超时").await;
             finish_failed(&store).await;
             return;
@@ -95,19 +104,13 @@ pub async fn run_start_flow(store: Arc<RwLock<HashMap<String, AgentPipelineStatu
 
         match reqwest::get(&probe_url).await {
             Ok(resp) if resp.status().is_success() || resp.status().as_u16() < 500 => {
-                append_log(&store, &format!(
-                    "✓ 服务已就绪 (状态码: {})",
-                    resp.status()
-                )).await;
+                append_log(&store, &format!("✓ 服务已就绪 (状态码: {})", resp.status())).await;
                 set_hint(&store, "OpenClaw 服务已启动").await;
                 finish_success(&store, Some(DASHBOARD_URL.to_string())).await;
                 return;
             }
             Ok(resp) => {
-                append_log(&store, &format!(
-                    "等待中... (状态码: {})",
-                    resp.status()
-                )).await;
+                append_log(&store, &format!("等待中... (状态码: {})", resp.status())).await;
             }
             Err(_) => {
                 // Connection refused — server not yet ready
@@ -236,7 +239,10 @@ async fn set_hint(store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>, hin
     }
 }
 
-async fn finish_success(store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>, dashboard_url: Option<String>) {
+async fn finish_success(
+    store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>,
+    dashboard_url: Option<String>,
+) {
     let mut map = store.write().await;
     if let Some(status) = map.get_mut(RUN_KEY) {
         status.running = false;

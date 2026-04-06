@@ -35,8 +35,8 @@ pub async fn run_install_flow(store: Arc<RwLock<HashMap<String, AgentPipelineSta
         append_log(&store, &format!("发现已有 OpenClaw: {}", path)).await;
 
         if openclaw_cli::health_check(&path) {
-            let version = openclaw_cli::get_openclaw_version(&path)
-                .unwrap_or_else(|| "unknown".to_string());
+            let version =
+                openclaw_cli::get_openclaw_version(&path).unwrap_or_else(|| "unknown".to_string());
             append_log(&store, &format!("健康检查通过，版本: {}", version)).await;
             set_hint(&store, "复用系统已有 OpenClaw").await;
 
@@ -46,7 +46,13 @@ pub async fn run_install_flow(store: Arc<RwLock<HashMap<String, AgentPipelineSta
                 append_log(&store, &format!("Node.js 版本: {}", nv)).await;
             }
 
-            save_install_state(&path, &version, "reuse_existing", false, node_version.as_deref());
+            save_install_state(
+                &path,
+                &version,
+                "reuse_existing",
+                false,
+                node_version.as_deref(),
+            );
             finish_success(&store, None).await;
             return;
         } else {
@@ -116,14 +122,20 @@ pub async fn run_install_flow(store: Arc<RwLock<HashMap<String, AgentPipelineSta
 
     if let Some(path) = openclaw_cli::find_openclaw_binary() {
         if openclaw_cli::health_check(&path) {
-            let version = openclaw_cli::get_openclaw_version(&path)
-                .unwrap_or_else(|| "unknown".to_string());
+            let version =
+                openclaw_cli::get_openclaw_version(&path).unwrap_or_else(|| "unknown".to_string());
             let node_version = openclaw_cli::get_node_version();
 
             append_log(&store, &format!("✓ 安装成功: {} (v{})", path, version)).await;
             set_hint(&store, "OpenClaw 安装完成").await;
 
-            save_install_state(&path, &version, "managed_native", true, node_version.as_deref());
+            save_install_state(
+                &path,
+                &version,
+                "managed_native",
+                true,
+                node_version.as_deref(),
+            );
             finish_success(&store, None).await;
             return;
         }
@@ -157,7 +169,10 @@ fn save_install_state(
             "installed_at": chrono_now(),
         });
 
-        let _ = std::fs::write(state_file, serde_json::to_string_pretty(&state).unwrap_or_default());
+        let _ = std::fs::write(
+            state_file,
+            serde_json::to_string_pretty(&state).unwrap_or_default(),
+        );
     }
 }
 
@@ -186,7 +201,10 @@ async fn set_hint(store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>, hin
     }
 }
 
-async fn finish_success(store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>, dashboard_url: Option<String>) {
+async fn finish_success(
+    store: &Arc<RwLock<HashMap<String, AgentPipelineStatus>>>,
+    dashboard_url: Option<String>,
+) {
     let mut map = store.write().await;
     if let Some(status) = map.get_mut(RUN_KEY) {
         status.running = false;

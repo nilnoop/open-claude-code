@@ -1,22 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agents;
+mod cc_switch_terminal;
 mod pipeline;
 
-use std::env;
+use pipeline::PipelineStore;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
+use std::env;
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
-use pipeline::PipelineStore;
 use tauri::State;
 
 const DEFAULT_DESKTOP_API_BASE: &str = "http://127.0.0.1:4357";
 const DEFAULT_DESKTOP_SERVER_ADDR: &str = "127.0.0.1:4357";
+const CLAUDE_CODE_CLI_TOOL: &str = "claude-code";
+const OPENAI_CODEX_CLI_TOOL: &str = "openai-codex";
+const CODEX_OPENAI_PROVIDER_ID: &str = "codex-openai";
+const QWEN_CODE_PROVIDER_ID: &str = "qwen-code";
 type DesktopServerHandle = Arc<Mutex<Option<Child>>>;
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,12 @@ fn desktop_api_base() -> String {
     desired_desktop_api_base()
 }
 
+#[tauri::command]
+fn desktop_server_ensure(handle: State<'_, DesktopServerHandle>) -> Result<String, String> {
+    ensure_desktop_server(handle.inner())?;
+    Ok(desired_desktop_api_base())
+}
+
 // ---------------------------------------------------------------------------
 // Agent pipeline commands
 // ---------------------------------------------------------------------------
@@ -119,7 +129,9 @@ async fn agent_pipeline_start(
     let run_key = format!("{}:{}", agent_id, action);
     match store.get(&run_key).await {
         Some(status) => Ok(status),
-        None => Ok(pipeline::AgentPipelineStatus::new_pending(&agent_id, &action)),
+        None => Ok(pipeline::AgentPipelineStatus::new_pending(
+            &agent_id, &action,
+        )),
     }
 }
 
@@ -132,7 +144,9 @@ async fn agent_pipeline_status(
     let run_key = format!("{}:{}", agent_id, action);
     match store.get(&run_key).await {
         Some(status) => Ok(status),
-        None => Ok(pipeline::AgentPipelineStatus::new_pending(&agent_id, &action)),
+        None => Ok(pipeline::AgentPipelineStatus::new_pending(
+            &agent_id, &action,
+        )),
     }
 }
 
@@ -192,10 +206,14 @@ async fn openclaw_runtime_snapshot() -> Result<OpenclawRuntimeSnapshot, String> 
 
     Ok(OpenclawRuntimeSnapshot {
         running,
-        pid: None,       // TODO: detect PID from process list
+        pid: None, // TODO: detect PID from process list
         memory_bytes: None,
         uptime_seconds: None,
-        activity_state: if running { "idle".to_string() } else { "unknown".to_string() },
+        activity_state: if running {
+            "idle".to_string()
+        } else {
+            "unknown".to_string()
+        },
         os: std::env::consts::OS.to_string(),
         config_initialized: false,
     })
@@ -222,10 +240,8 @@ async fn openclaw_setup_overview() -> Result<SetupProductOverview, String> {
 #[tauri::command]
 async fn openclaw_service_control(action: String) -> Result<ServiceControlResult, String> {
     match action.as_str() {
-        "stop" => {
-            agents::openclaw_lifecycle::stop_service()
-                .map(|_| ServiceControlResult { success: true })
-        }
+        "stop" => agents::openclaw_lifecycle::stop_service()
+            .map(|_| ServiceControlResult { success: true }),
         _ => Err(format!("Unknown action: {}", action)),
     }
 }
@@ -249,7 +265,7 @@ struct OpenclawInstallCheck {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OpenclawGatewayStatusResult {
-    status: String,  // "stopped" | "running"
+    status: String, // "stopped" | "running"
     port: u16,
 }
 
@@ -267,13 +283,10 @@ struct CodeToolSelectedModelPayload {
     provider_id: String,
     provider_name: String,
     provider_type: String,
-    runtime_target: String,
     base_url: String,
     protocol: String,
     model_id: String,
     display_name: String,
-    managed_provider_id: Option<String>,
-    preset_id: Option<String>,
     has_stored_credential: bool,
 }
 
@@ -296,14 +309,25 @@ struct CodeToolRunResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProviderHubStore {
-    providers: Vec<StoredManagedProviderSecret>,
+#[serde(rename_all = "camelCase")]
+struct CodeToolLaunchProfileRequest {
+    cli_tool: String,
+    provider_id: String,
+    model_id: String,
+    desktop_api_base: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredManagedProviderSecret {
-    id: String,
-    api_key: Option<String>,
+#[serde(rename_all = "camelCase")]
+struct CodeToolLaunchProfilePayload {
+    environment_variables: HashMap<String, String>,
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodeToolLaunchProfileResponse {
+    launch_profile: CodeToolLaunchProfilePayload,
 }
 
 /// Check installation matching cherry-studio's checkInstalled():
@@ -332,7 +356,11 @@ async fn openclaw_get_status() -> Result<OpenclawGatewayStatusResult, String> {
     };
 
     Ok(OpenclawGatewayStatusResult {
-        status: if running { "running".to_string() } else { "stopped".to_string() },
+        status: if running {
+            "running".to_string()
+        } else {
+            "stopped".to_string()
+        },
         port: OPENCLAW_GATEWAY_PORT,
     })
 }
@@ -359,11 +387,7 @@ async fn install_bun_binary() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let status = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "irm bun.sh/install.ps1 | iex",
-            ])
+            .args(["-NoProfile", "-Command", "irm bun.sh/install.ps1 | iex"])
             .status()
             .map_err(|error| format!("Failed to start Bun installer: {error}"))?;
 
@@ -395,7 +419,10 @@ async fn code_tools_get_available_terminals() -> Result<Vec<CodeToolsTerminalCon
 }
 
 #[tauri::command]
-async fn code_tools_run(payload: CodeToolsRunPayload) -> Result<CodeToolRunResult, String> {
+async fn code_tools_run(
+    handle: State<'_, DesktopServerHandle>,
+    payload: CodeToolsRunPayload,
+) -> Result<CodeToolRunResult, String> {
     let directory = PathBuf::from(&payload.directory);
     if !directory.exists() {
         return Ok(CodeToolRunResult {
@@ -404,30 +431,83 @@ async fn code_tools_run(payload: CodeToolsRunPayload) -> Result<CodeToolRunResul
         });
     }
 
-    if !binary_exists("bun") {
+    let installed_binary = installed_binary_for_cli(&payload.cli_tool);
+
+    if installed_binary.is_none() && !binary_exists("bun") {
         return Ok(CodeToolRunResult {
             success: false,
             message: Some("请先安装 Bun 环境".to_string()),
         });
     }
 
+    ensure_desktop_server(handle.inner())?;
+
     let package_name = package_name_for_cli(&payload.cli_tool)?;
-    let executable_name = executable_name_for_cli(&payload.cli_tool)?;
+    let desktop_api_base = desired_desktop_api_base();
     let mut env_map = payload.environment_variables.clone();
 
-    if let Some(selected_model) = &payload.selected_model {
-        inject_model_environment(&payload.cli_tool, &mut env_map, selected_model);
-        inject_managed_provider_api_key(&payload.cli_tool, &mut env_map, selected_model);
+    if tool_requires_model(&payload.cli_tool) && payload.selected_model.is_none() {
+        return Ok(CodeToolRunResult {
+            success: false,
+            message: Some("请选择模型".to_string()),
+        });
+    }
+
+    if tool_requires_model(&payload.cli_tool) {
+        let selected_model = payload
+            .selected_model
+            .as_ref()
+            .ok_or_else(|| "请选择模型".to_string())?;
+
+        if !selected_model.has_stored_credential {
+            return Ok(CodeToolRunResult {
+                success: false,
+                message: Some("所选模型服务尚未连接账号，请先在模型服务页完成 OAuth 登录。".to_string()),
+            });
+        }
+
+        let selected_provider_matches_tool =
+            tool_supports_provider(&payload.cli_tool, &selected_model.provider_id);
+
+        if !selected_provider_matches_tool {
+            return Ok(CodeToolRunResult {
+                success: false,
+                message: Some(match payload.cli_tool.as_str() {
+                    OPENAI_CODEX_CLI_TOOL => {
+                        "OpenAI Codex 当前仅支持 Codex OAuth 模型服务。".to_string()
+                    }
+                    _ => "当前代码工具只支持 Codex OAuth 或 Qwen OAuth 模型服务。".to_string(),
+                }),
+            });
+        }
+
+        match fetch_code_tool_launch_profile(
+            &desktop_api_base,
+            &payload.cli_tool,
+            selected_model,
+        )
+        .await
+        {
+            Ok(launch_profile) => {
+                env_map.extend(launch_profile.environment_variables);
+            }
+            Err(error) => {
+                return Ok(CodeToolRunResult {
+                    success: false,
+                    message: Some(error),
+                });
+            }
+        }
     }
 
     let shell_command = build_cli_shell_command(
         &payload.cli_tool,
         package_name,
-        executable_name,
         payload.auto_update_to_latest,
         &env_map,
         &payload.directory,
         payload.selected_model.as_ref(),
+        installed_binary.as_deref(),
     );
 
     spawn_code_tool_terminal(&payload.terminal, &shell_command, &payload.directory)?;
@@ -446,19 +526,6 @@ fn read_install_state() -> Option<serde_json::Value> {
     let home = dirs::home_dir()?;
     let state_file = home.join(".warwolf").join("openclaw-install-state.json");
     let content = std::fs::read_to_string(state_file).ok()?;
-    serde_json::from_str(&content).ok()
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
-fn provider_hub_path() -> PathBuf {
-    workspace_root().join("warwolf-provider-hub.json")
-}
-
-fn read_provider_hub_store() -> Option<ProviderHubStore> {
-    let content = fs::read_to_string(provider_hub_path()).ok()?;
     serde_json::from_str(&content).ok()
 }
 
@@ -495,11 +562,42 @@ fn detect_available_terminals() -> Vec<CodeToolsTerminalConfig> {
             custom_path: None,
         }];
 
-        let iterm_path = PathBuf::from("/Applications/iTerm.app");
-        if iterm_path.exists() {
+        if macos_app_exists("iTerm.app") {
             terminals.push(CodeToolsTerminalConfig {
                 id: "iTerm2".to_string(),
                 name: "iTerm2".to_string(),
+                custom_path: None,
+            });
+        }
+
+        if macos_app_exists("Ghostty.app") {
+            terminals.push(CodeToolsTerminalConfig {
+                id: "Ghostty".to_string(),
+                name: "Ghostty".to_string(),
+                custom_path: None,
+            });
+        }
+
+        if macos_app_exists("kitty.app") {
+            terminals.push(CodeToolsTerminalConfig {
+                id: "kitty".to_string(),
+                name: "kitty".to_string(),
+                custom_path: None,
+            });
+        }
+
+        if macos_app_exists("WezTerm.app") {
+            terminals.push(CodeToolsTerminalConfig {
+                id: "WezTerm".to_string(),
+                name: "WezTerm".to_string(),
+                custom_path: None,
+            });
+        }
+
+        if macos_app_exists("Alacritty.app") {
+            terminals.push(CodeToolsTerminalConfig {
+                id: "Alacritty".to_string(),
+                name: "Alacritty".to_string(),
                 custom_path: None,
             });
         }
@@ -543,155 +641,34 @@ fn detect_available_terminals() -> Vec<CodeToolsTerminalConfig> {
 
 fn package_name_for_cli(cli_tool: &str) -> Result<&'static str, String> {
     match cli_tool {
-        "claude-code" => Ok("@anthropic-ai/claude-code"),
-        "qwen-code" => Ok("@qwen-code/qwen-code"),
-        "gemini-cli" => Ok("@google/gemini-cli"),
-        "openai-codex" => Ok("@openai/codex"),
-        "iflow-cli" => Ok("@iflow-ai/iflow-cli"),
-        "github-copilot-cli" => Ok("@github/copilot"),
-        "kimi-cli" => Ok("kimi-cli"),
-        "opencode" => Ok("opencode-ai"),
+        CLAUDE_CODE_CLI_TOOL => Ok("@anthropic-ai/claude-code"),
+        OPENAI_CODEX_CLI_TOOL => Ok("@openai/codex"),
         _ => Err(format!("Unsupported CLI tool: {cli_tool}")),
-    }
-}
-
-fn executable_name_for_cli(cli_tool: &str) -> Result<&'static str, String> {
-    match cli_tool {
-        "claude-code" => Ok("claude"),
-        "qwen-code" => Ok("qwen"),
-        "gemini-cli" => Ok("gemini"),
-        "openai-codex" => Ok("codex"),
-        "iflow-cli" => Ok("iflow"),
-        "github-copilot-cli" => Ok("copilot"),
-        "kimi-cli" => Ok("kimi"),
-        "opencode" => Ok("opencode"),
-        _ => Err(format!("Unsupported CLI tool: {cli_tool}")),
-    }
-}
-
-fn inject_model_environment(
-    cli_tool: &str,
-    env_map: &mut HashMap<String, String>,
-    model: &CodeToolSelectedModelPayload,
-) {
-    if cli_tool == "openai-codex" {
-        return;
-    }
-
-    match model.protocol.as_str() {
-        "anthropic-messages" => {
-            env_map.insert("ANTHROPIC_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert("ANTHROPIC_MODEL".to_string(), model.model_id.clone());
-        }
-        "gemini" => {
-            env_map.insert("GEMINI_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert(
-                "GOOGLE_GEMINI_BASE_URL".to_string(),
-                model.base_url.clone(),
-            );
-            env_map.insert("GEMINI_MODEL".to_string(), model.model_id.clone());
-        }
-        "openai-responses" => {
-            env_map.insert("OPENAI_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert("OPENAI_MODEL".to_string(), model.model_id.clone());
-            env_map.insert(
-                "OPENAI_MODEL_PROVIDER".to_string(),
-                model.provider_id.clone(),
-            );
-            env_map.insert(
-                "OPENAI_MODEL_PROVIDER_NAME".to_string(),
-                model.provider_name.clone(),
-            );
-        }
-        _ => {
-            env_map.insert("OPENAI_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert("OPENAI_MODEL".to_string(), model.model_id.clone());
-            env_map.insert("IFLOW_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert("IFLOW_MODEL_NAME".to_string(), model.model_id.clone());
-            env_map.insert("KIMI_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert("KIMI_MODEL_NAME".to_string(), model.model_id.clone());
-            env_map.insert("OPENCODE_BASE_URL".to_string(), model.base_url.clone());
-            env_map.insert(
-                "OPENCODE_MODEL_NAME".to_string(),
-                model.display_name.clone(),
-            );
-        }
-    }
-}
-
-fn inject_managed_provider_api_key(
-    cli_tool: &str,
-    env_map: &mut HashMap<String, String>,
-    model: &CodeToolSelectedModelPayload,
-) {
-    if cli_tool == "openai-codex" {
-        return;
-    }
-
-    let Some(managed_provider_id) = &model.managed_provider_id else {
-        return;
-    };
-
-    let Some(store) = read_provider_hub_store() else {
-        return;
-    };
-
-    let Some(api_key) = store
-        .providers
-        .iter()
-        .find(|provider| provider.id == *managed_provider_id)
-        .and_then(|provider| provider.api_key.clone())
-    else {
-        return;
-    };
-
-    if api_key.trim().is_empty() {
-        return;
-    }
-
-    match model.protocol.as_str() {
-        "anthropic-messages" => {
-            env_map
-                .entry("ANTHROPIC_API_KEY".to_string())
-                .or_insert(api_key);
-        }
-        "gemini" => {
-            env_map.entry("GEMINI_API_KEY".to_string()).or_insert(api_key);
-        }
-        "openai-responses" | "openai-completions" => {
-            env_map
-                .entry("OPENAI_API_KEY".to_string())
-                .or_insert(api_key.clone());
-            env_map.entry("IFLOW_API_KEY".to_string()).or_insert(api_key.clone());
-            env_map.entry("KIMI_API_KEY".to_string()).or_insert(api_key.clone());
-        }
-        _ => {}
     }
 }
 
 fn build_cli_shell_command(
     cli_tool: &str,
     package_name: &str,
-    _executable_name: &str,
     auto_update_to_latest: bool,
     env_map: &HashMap<String, String>,
     directory: &str,
     selected_model: Option<&CodeToolSelectedModelPayload>,
+    installed_binary: Option<&str>,
 ) -> String {
-    let env_reset_prefix = build_code_tool_env_reset_prefix(cli_tool, env_map);
+    let env_reset_prefix = build_code_tool_env_reset_prefix(cli_tool, env_map, selected_model);
     let exports = env_map
         .iter()
         .map(|(key, value)| format!("export {key}={};", shell_quote(value)))
         .collect::<Vec<_>>()
         .join(" ");
-    let update_prefix = if auto_update_to_latest {
-        format!(
-            "bun add -g {package_name}@latest >/dev/null 2>&1 || true; "
-        )
+    let update_prefix = if auto_update_to_latest && installed_binary.is_none() {
+        format!("bun add -g {package_name}@latest >/dev/null 2>&1 || true; ")
     } else {
         String::new()
     };
-    let run_command = build_cli_run_command(cli_tool, package_name, selected_model);
+    let run_command =
+        build_cli_run_command(cli_tool, package_name, selected_model, installed_binary);
 
     format!(
         "export PATH=\"$HOME/.bun/bin:$PATH\"; cd {}; {env_reset_prefix} {exports} {update_prefix}{run_command}; exit",
@@ -699,37 +676,59 @@ fn build_cli_shell_command(
     )
 }
 
-fn build_code_tool_env_reset_prefix(cli_tool: &str, env_map: &HashMap<String, String>) -> String {
-    if cli_tool != "openai-codex" {
-        return String::new();
-    }
+fn build_code_tool_env_reset_prefix(
+    cli_tool: &str,
+    env_map: &HashMap<String, String>,
+    _selected_model: Option<&CodeToolSelectedModelPayload>,
+) -> String {
+    let keys: &[&str] = match cli_tool {
+        OPENAI_CODEX_CLI_TOOL => &[
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "OPENAI_MODEL",
+            "OPENAI_MODEL_PROVIDER",
+            "OPENAI_MODEL_PROVIDER_NAME",
+            "CODEX_HOME",
+        ],
+        CLAUDE_CODE_CLI_TOOL => &[
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+        ],
+        _ => return String::new(),
+    };
 
-    // Codex CLI already manages its own ChatGPT/API-key auth in ~/.codex.
-    // Clear inherited OPENAI_* vars unless the user explicitly set them in the form.
-    [
-        "OPENAI_API_KEY",
-        "OPENAI_BASE_URL",
-        "OPENAI_MODEL",
-        "OPENAI_MODEL_PROVIDER",
-        "OPENAI_MODEL_PROVIDER_NAME",
-    ]
-    .into_iter()
-    .filter(|key| !env_map.contains_key(*key))
-    .map(|key| format!("unset {key};"))
-    .collect::<Vec<_>>()
-    .join(" ")
+    keys.iter()
+        .copied()
+        .filter(|key| !env_map.contains_key(*key))
+        .map(|key| format!("unset {key};"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn build_cli_run_command(
     cli_tool: &str,
     package_name: &str,
     selected_model: Option<&CodeToolSelectedModelPayload>,
+    installed_binary: Option<&str>,
 ) -> String {
+    if let Some(binary_path) = installed_binary {
+        return build_installed_cli_run_command(cli_tool, binary_path, selected_model);
+    }
+
     match cli_tool {
-        "openai-codex" => {
+        OPENAI_CODEX_CLI_TOOL => {
             let mut command = format!("bunx -y {package_name}");
             if let Some(model) = selected_model {
                 command.push_str(" -m ");
+                command.push_str(&shell_quote(&model.model_id));
+            }
+            command
+        }
+        CLAUDE_CODE_CLI_TOOL => {
+            let mut command = format!("bunx -y {package_name}");
+            if let Some(model) = selected_model {
+                command.push_str(" --model ");
                 command.push_str(&shell_quote(&model.model_id));
             }
             command
@@ -741,35 +740,32 @@ fn build_cli_run_command(
 fn spawn_code_tool_terminal(
     terminal: &str,
     shell_command: &str,
-    _directory: &str,
+    directory: &str,
 ) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let escaped_command = escape_for_applescript(shell_command);
-        let script = if terminal == "iTerm2" && Path::new("/Applications/iTerm.app").exists() {
-            format!(
-                "tell application \"iTerm\" to create window with default profile command \"{escaped_command}\""
-            )
-        } else {
-            format!(
-                "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"{escaped_command}\""
-            )
-        };
-
-        Command::new("osascript")
-            .arg("-e")
-            .arg(script)
-            .spawn()
-            .map_err(|error| format!("Failed to open terminal: {error}"))?;
-
-        return Ok(());
+        return cc_switch_terminal::launch_terminal(
+            terminal_target_for_ui(terminal),
+            shell_command,
+            Some(directory),
+            None,
+        );
     }
 
     #[cfg(target_os = "windows")]
     {
         let status = if terminal == "WindowsTerminal" && binary_exists("wt") {
             Command::new("cmd")
-                .args(["/C", "start", "wt", "-d", directory, "cmd", "/K", shell_command])
+                .args([
+                    "/C",
+                    "start",
+                    "wt",
+                    "-d",
+                    directory,
+                    "cmd",
+                    "/K",
+                    shell_command,
+                ])
                 .spawn()
         } else if terminal == "PowerShell" {
             Command::new("cmd")
@@ -808,15 +804,121 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn escape_for_applescript(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\"', "\\\"")
-}
-
 fn desired_desktop_api_base() -> String {
     env::var("OPEN_CLAUDE_CODE_DESKTOP_API_BASE")
         .unwrap_or_else(|_| DEFAULT_DESKTOP_API_BASE.to_string())
+}
+
+fn tool_requires_model(cli_tool: &str) -> bool {
+    matches!(cli_tool, CLAUDE_CODE_CLI_TOOL | OPENAI_CODEX_CLI_TOOL)
+}
+
+fn tool_supports_provider(cli_tool: &str, provider_id: &str) -> bool {
+    match cli_tool {
+        CLAUDE_CODE_CLI_TOOL => {
+            matches!(provider_id, CODEX_OPENAI_PROVIDER_ID | QWEN_CODE_PROVIDER_ID)
+        }
+        OPENAI_CODEX_CLI_TOOL => provider_id == CODEX_OPENAI_PROVIDER_ID,
+        _ => false,
+    }
+}
+
+async fn fetch_code_tool_launch_profile(
+    desktop_api_base: &str,
+    cli_tool: &str,
+    selected_model: &CodeToolSelectedModelPayload,
+) -> Result<CodeToolLaunchProfilePayload, String> {
+    let request = CodeToolLaunchProfileRequest {
+        cli_tool: cli_tool.to_string(),
+        provider_id: selected_model.provider_id.clone(),
+        model_id: selected_model.model_id.clone(),
+        desktop_api_base: desktop_api_base.to_string(),
+    };
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{}/api/desktop/code-tools/launch-profile",
+            desktop_api_base.trim_end_matches('/')
+        ))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|error| format!("获取代码工具启动配置失败: {error}"))?;
+
+    if !response.status().is_success() {
+        let message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown launch profile error".to_string());
+        return Err(format!("获取代码工具启动配置失败: {message}"));
+    }
+
+    response
+        .json::<CodeToolLaunchProfileResponse>()
+        .await
+        .map(|payload| payload.launch_profile)
+        .map_err(|error| format!("解析代码工具启动配置失败: {error}"))
+}
+
+fn build_installed_cli_run_command(
+    cli_tool: &str,
+    binary_path: &str,
+    selected_model: Option<&CodeToolSelectedModelPayload>,
+) -> String {
+    let quoted_binary = shell_quote(binary_path);
+    match cli_tool {
+        CLAUDE_CODE_CLI_TOOL => {
+            let mut command = quoted_binary;
+            if let Some(model) = selected_model {
+                command.push_str(" --model ");
+                command.push_str(&shell_quote(&model.model_id));
+            }
+            command
+        }
+        OPENAI_CODEX_CLI_TOOL => {
+            let mut command = quoted_binary;
+            if let Some(model) = selected_model {
+                command.push_str(" -m ");
+                command.push_str(&shell_quote(&model.model_id));
+            }
+            command
+        }
+        _ => quoted_binary,
+    }
+}
+
+fn installed_binary_for_cli(cli_tool: &str) -> Option<String> {
+    match cli_tool {
+        CLAUDE_CODE_CLI_TOOL => {
+            which_binary("claude").map(|path| path.to_string_lossy().to_string())
+        }
+        OPENAI_CODEX_CLI_TOOL => {
+            which_binary("codex").map(|path| path.to_string_lossy().to_string())
+        }
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn terminal_target_for_ui(terminal: &str) -> &'static str {
+    match terminal {
+        "iTerm2" => "iterm",
+        "Ghostty" => "ghostty",
+        "kitty" => "kitty",
+        "WezTerm" => "wezterm",
+        "Alacritty" => "alacritty",
+        _ => "terminal",
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_app_exists(app_name: &str) -> bool {
+    let mut candidate_paths = vec![PathBuf::from("/Applications").join(app_name)];
+
+    if let Some(home) = env::var_os("HOME") {
+        candidate_paths.push(PathBuf::from(home).join("Applications").join(app_name));
+    }
+
+    candidate_paths.into_iter().any(|path| path.exists())
 }
 
 fn desired_desktop_server_addr() -> String {
@@ -845,8 +947,14 @@ fn wait_for_desktop_server(address: &str, timeout: Duration) -> bool {
 
 fn desktop_server_binary_candidates(workspace_dir: &Path) -> Vec<PathBuf> {
     let mut candidates = vec![
-        workspace_dir.join("target").join("debug").join("desktop-server"),
-        workspace_dir.join("target").join("release").join("desktop-server"),
+        workspace_dir
+            .join("target")
+            .join("debug")
+            .join("desktop-server"),
+        workspace_dir
+            .join("target")
+            .join("release")
+            .join("desktop-server"),
     ];
 
     if let Ok(current_exe) = env::current_exe() {
@@ -863,14 +971,17 @@ fn desktop_server_binary_candidates(workspace_dir: &Path) -> Vec<PathBuf> {
 fn spawn_desktop_server_process(address: &str) -> Result<Child, String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_dir = manifest_dir.join("../../../rust");
+    eprintln!("starting desktop-server for address {address}");
     let mut command = if let Some(binary) = desktop_server_binary_candidates(&workspace_dir)
         .into_iter()
         .find(|candidate| candidate.exists())
     {
+        eprintln!("using desktop-server binary {}", binary.display());
         let mut command = Command::new(binary);
         command.current_dir(&workspace_dir);
         command
     } else if cfg!(debug_assertions) {
+        eprintln!("desktop-server binary missing, falling back to `cargo run -p desktop-server`");
         let mut command = Command::new("cargo");
         command
             .current_dir(&workspace_dir)
@@ -935,6 +1046,7 @@ fn ensure_desktop_server(handle: &DesktopServerHandle) -> Result<(), String> {
     };
 
     if wait_for_desktop_server(&address, timeout) {
+        eprintln!("desktop-server ready at {address}");
         return Ok(());
     }
 
@@ -956,9 +1068,11 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(Arc::clone(&desktop_server))
         .manage(PipelineStore::new())
         .invoke_handler(tauri::generate_handler![
             desktop_api_base,
+            desktop_server_ensure,
             agent_pipeline_start,
             agent_pipeline_status,
             openclaw_connect_status,

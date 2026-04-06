@@ -29,11 +29,14 @@
     },
     "notice": {
       "bunRequired": "运行 CLI 工具需要安装 Bun 环境",
-      "codexAuthMissing": "OpenAI Codex 当前未检测到可用的 Codex 登录态或 API 凭据",
-      "codexAuthHint": "如果使用 OpenAI Codex，建议先在设置中的 Provider 页面完成 Codex 登录。",
+      "codexAuthMissing": "OpenAI Codex 当前未检测到可用的 Codex OAuth 登录态",
+      "codexAuthHint": "如果使用 OpenAI Codex，请先在模型服务页完成 Codex OAuth 登录。",
       "noProviders": "当前没有可用于",
       "thisTool": " 该工具",
-      "presetsShown": "的服务商配置，页面会先显示预设目录。"
+      "presetsShown": "的 OAuth 模型服务，请先在模型服务页完成授权。",
+      "modelOptional": "当前工具不需要在这里选择 OAuth 模型。",
+      "localCliLaunch": "{{tool}} 会直接使用本机 CLI 自己的登录态和配置启动，Warwolf 当前不会覆盖它的模型与鉴权。",
+      "managedAuthLaunch": "{{tool}} 会优先使用 Warwolf 当前接管的 OAuth 运行时。"
     },
     "button": {
       "installing": "安装中...",

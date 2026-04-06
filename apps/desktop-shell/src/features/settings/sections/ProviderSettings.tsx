@@ -1,18 +1,11 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import i18n from "@/i18n";
 import {
-  CheckCircle2,
-  Cloud,
-  Download,
   ExternalLink,
   Loader2,
   LogIn,
   RefreshCw,
-  ShieldAlert,
-  ShieldCheck,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -24,28 +17,30 @@ import { cn } from "@/lib/utils";
 import {
   activateCodexAuthProfile,
   beginCodexLogin,
+  beginManagedAuthLogin,
   getCodexAuthOverview,
   getCodexRuntime,
-  getManagedProviders,
-  getProviderPresets,
+  getManagedAuthAccounts,
+  getManagedAuthProviders,
   importCodexAuthProfile,
   openDashboardUrl,
   pollCodexLogin,
+  pollManagedAuthLogin,
   refreshCodexAuthProfile,
+  refreshManagedAuthAccount,
   removeCodexAuthProfile,
-  syncManagedProvider,
-  upsertManagedProvider,
+  removeManagedAuthAccount,
+  setManagedAuthDefaultAccount,
   type DesktopCodexAuthOverview,
-  type DesktopCodexAuthSource,
   type DesktopCodexLoginSessionSnapshot,
   type DesktopCodexProfileSummary,
   type DesktopCustomizeState,
-  type DesktopManagedProvider,
-  type DesktopProviderModel,
-  type DesktopProviderPreset,
+  type DesktopManagedAuthAccount,
+  type DesktopManagedAuthLoginSessionSnapshot,
 } from "@/lib/tauri";
 
-const OPENAI_PROVIDER_PRESET_ID = "codex-openai";
+const CODEX_PROVIDER_ID = "codex-openai";
+const QWEN_PROVIDER_ID = "qwen-code";
 
 interface ProviderSettingsProps {
   customize: DesktopCustomizeState | null;
@@ -58,37 +53,33 @@ interface Notice {
 }
 
 type BusyAction =
-  | "initializing"
-  | "toggle-enabled"
-  | "sync"
   | "refresh"
-  | "import-auth"
-  | "login"
-  | "activate-profile"
-  | "refresh-profile"
-  | "remove-profile"
-  | "set-default-model"
+  | "codex-import"
+  | "codex-login"
+  | "codex-activate"
+  | "codex-refresh"
+  | "codex-remove"
+  | "qwen-login"
+  | "qwen-set-default"
+  | "qwen-refresh"
+  | "qwen-remove"
   | null;
 
-export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
-  const { t } = useTranslation();
+export function ProviderSettings({ error }: ProviderSettingsProps) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
-  const [removeProfileId, setRemoveProfileId] = useState<string | null>(null);
-  const [initializingProvider, setInitializingProvider] = useState(false);
   const [codexLoginSession, setCodexLoginSession] =
     useState<DesktopCodexLoginSessionSnapshot | null>(null);
+  const [qwenLoginSession, setQwenLoginSession] =
+    useState<DesktopManagedAuthLoginSessionSnapshot | null>(null);
+  const [removeCodexProfileId, setRemoveCodexProfileId] = useState<string | null>(null);
+  const [removeQwenAccountId, setRemoveQwenAccountId] = useState<string | null>(null);
   const codexLoginStatusRef = useRef<string | null>(null);
-
-  const presetsQuery = useQuery({
-    queryKey: ["provider-presets"],
-    queryFn: async () => (await getProviderPresets()).presets,
-    refetchOnWindowFocus: false,
-  });
+  const qwenLoginStatusRef = useRef<string | null>(null);
 
   const providersQuery = useQuery({
-    queryKey: ["managed-providers"],
-    queryFn: async () => (await getManagedProviders()).providers,
+    queryKey: ["managed-auth-providers"],
+    queryFn: async () => (await getManagedAuthProviders()).providers,
     refetchOnWindowFocus: false,
   });
 
@@ -104,192 +95,44 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     refetchOnWindowFocus: false,
   });
 
-  const openAiPreset = useMemo(
-    () =>
-      (presetsQuery.data ?? []).find((preset) => preset.id === OPENAI_PROVIDER_PRESET_ID) ?? null,
-    [presetsQuery.data]
-  );
+  const qwenAuthQuery = useQuery({
+    queryKey: ["managed-auth-accounts", QWEN_PROVIDER_ID],
+    queryFn: async () => await getManagedAuthAccounts(QWEN_PROVIDER_ID),
+    refetchOnWindowFocus: false,
+  });
 
-  const managedOpenAiProvider = useMemo(
+  const codexProvider = useMemo(
     () =>
-      (providersQuery.data ?? []).find((provider) => isOpenAiProvider(provider)) ?? null,
+      (providersQuery.data ?? []).find((provider) => provider.id === CODEX_PROVIDER_ID) ??
+      null,
     [providersQuery.data]
   );
-
+  const qwenProvider = qwenAuthQuery.data?.provider ?? null;
   const codexRuntime = codexRuntimeQuery.data ?? null;
-  const codexAuthOverview = codexAuthOverviewQuery.data ?? null;
-  const displayProvider = managedOpenAiProvider ?? openAiPreset;
-  const displayProviderEnabled = managedOpenAiProvider?.enabled ?? true;
+  const codexOverview = codexAuthOverviewQuery.data ?? null;
+  const qwenAccounts = qwenAuthQuery.data?.accounts ?? [];
 
-  const activeProfile = useMemo(
-    () => resolveCurrentCodexProfile(codexAuthOverview),
-    [codexAuthOverview]
+  const activeCodexProfile = useMemo(
+    () => resolveCurrentCodexProfile(codexOverview),
+    [codexOverview]
   );
-
-  const openAiLiveProvider = useMemo(
-    () =>
-      managedOpenAiProvider
-        ? codexRuntime?.live_providers.find((provider) => provider.id === managedOpenAiProvider.id) ??
-          null
-        : null,
-    [codexRuntime, managedOpenAiProvider]
+  const activeQwenAccount = useMemo(
+    () => resolveCurrentManagedAuthAccount(qwenAccounts),
+    [qwenAccounts]
   );
-
-  const syncState = useMemo(() => {
-    if (!managedOpenAiProvider) {
-      return {
-        label: t("provider.status.notWritten"),
-        applied: false,
-        live: false,
-      };
-    }
-    const live = Boolean(openAiLiveProvider);
-    const applied = codexRuntime?.active_provider_key === managedOpenAiProvider.id;
-    if (applied) {
-      return { label: t("provider.status.syncedActive"), applied: true, live: true };
-    }
-    if (live) {
-      return { label: t("provider.status.writtenToCodex"), applied: false, live: true };
-    }
-    return { label: t("provider.status.notWritten"), applied: false, live: false };
-  }, [codexRuntime, managedOpenAiProvider, openAiLiveProvider, t]);
-
-  const displayModels = useMemo(
-    () => managedOpenAiProvider?.models ?? openAiPreset?.models ?? [],
-    [managedOpenAiProvider, openAiPreset]
+  const qwenAvailableModels = useMemo(
+    () => qwenProvider?.models.map((model) => model.model_id) ?? [],
+    [qwenProvider]
   );
-
-  const groupedModels = useMemo(() => groupOpenAiModels(displayModels), [displayModels]);
-
-  const currentDefaultModelId =
-    syncState.applied && codexRuntime?.model
-      ? codexRuntime.model
-      : displayModels[0]?.model_id ?? null;
-
-  const diagnostics = useMemo(() => {
-    const messages: Array<{ tone: "success" | "warning"; message: string }> = [];
-    if (!activeProfile && !codexAuthOverview?.has_chatgpt_tokens) {
-      messages.push({
-        tone: "warning",
-        message: t("provider.diagnostics.noAccount"),
-      });
-    }
-    if (managedOpenAiProvider && !managedOpenAiProvider.enabled) {
-      messages.push({
-        tone: "warning",
-        message: t("provider.diagnostics.disabled"),
-      });
-    }
-    if (managedOpenAiProvider && !syncState.live) {
-      messages.push({
-        tone: "warning",
-        message: t("provider.diagnostics.notWritten"),
-      });
-    }
-    if (managedOpenAiProvider && syncState.live && !syncState.applied) {
-      messages.push({
-        tone: "warning",
-        message: t("provider.diagnostics.otherProvider"),
-      });
-    }
-    if (
-      activeProfile &&
-      managedOpenAiProvider?.enabled &&
-      syncState.applied &&
-      currentDefaultModelId
-    ) {
-      messages.push({
-        tone: "success",
-        message: t("provider.diagnostics.configured", { label: activeProfile.display_label, model: currentDefaultModelId }),
-      });
-    }
-    return messages;
-  }, [
-    activeProfile,
-    codexAuthOverview?.has_chatgpt_tokens,
-    currentDefaultModelId,
-    managedOpenAiProvider,
-    syncState.applied,
-    syncState.live,
-    t,
-  ]);
-
-  const warningBanner = useMemo(() => {
-    if (!activeProfile && !codexAuthOverview?.has_chatgpt_tokens) {
-      return t("provider.diagnostics.noAccount");
-    }
-    if (managedOpenAiProvider && !syncState.live) {
-      return t("provider.diagnostics.connectedButNotWritten");
-    }
-    if (managedOpenAiProvider && syncState.live && !syncState.applied) {
-      return t("provider.diagnostics.writtenButNotActive");
-    }
-    return null;
-  }, [activeProfile, codexAuthOverview?.has_chatgpt_tokens, managedOpenAiProvider, syncState, t]);
 
   async function refreshPageData() {
     await Promise.all([
-      presetsQuery.refetch(),
       providersQuery.refetch(),
       codexRuntimeQuery.refetch(),
       codexAuthOverviewQuery.refetch(),
+      qwenAuthQuery.refetch(),
     ]);
   }
-
-  const ensureOpenAiProvider = useCallback(async (): Promise<DesktopManagedProvider> => {
-    if (managedOpenAiProvider) {
-      return managedOpenAiProvider;
-    }
-    if (!openAiPreset) {
-      throw new Error(t("provider.error.presetNotLoaded"));
-    }
-    const response = await upsertManagedProvider(toManagedProviderPayload(openAiPreset));
-    return response.provider;
-  }, [managedOpenAiProvider, openAiPreset]);
-
-  useEffect(() => {
-    if (
-      initializingProvider ||
-      providersQuery.isLoading ||
-      providersQuery.isRefetching ||
-      providersQuery.error ||
-      !openAiPreset ||
-      managedOpenAiProvider
-    ) {
-      return;
-    }
-    let cancelled = false;
-    setInitializingProvider(true);
-    void ensureOpenAiProvider()
-      .then(async () => {
-        await refreshPageData();
-      })
-      .catch((providerError) => {
-        if (!cancelled) {
-          const message =
-            providerError instanceof Error
-              ? providerError.message
-              : t("provider.error.initFailed");
-          setNotice({ tone: "error", message });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setInitializingProvider(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    ensureOpenAiProvider,
-    initializingProvider,
-    managedOpenAiProvider,
-    openAiPreset,
-    providersQuery.error,
-    providersQuery.isLoading,
-    providersQuery.isRefetching,
-  ]);
 
   useEffect(() => {
     if (!codexLoginSession || codexLoginSession.status !== "pending") {
@@ -300,16 +143,40 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
         const response = await pollCodexLogin(codexLoginSession.session_id);
         setCodexLoginSession(response.session);
       } catch (pollError) {
-        const message =
-          pollError instanceof Error ? pollError.message : t("provider.error.pollLoginFailed");
-        setNotice({ tone: "error", message });
+        setNotice({
+          tone: "error",
+          message: errorMessage(pollError) ?? "Codex 登录状态轮询失败",
+        });
       }
     }, 1500);
     return () => window.clearTimeout(timeoutId);
   }, [codexLoginSession]);
 
   useEffect(() => {
-    if (!codexLoginSession) return;
+    if (!qwenLoginSession || qwenLoginSession.status !== "pending") {
+      return;
+    }
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await pollManagedAuthLogin(
+          qwenLoginSession.provider_id,
+          qwenLoginSession.session_id
+        );
+        setQwenLoginSession(response.session);
+      } catch (pollError) {
+        setNotice({
+          tone: "error",
+          message: errorMessage(pollError) ?? "Qwen 登录状态轮询失败",
+        });
+      }
+    }, 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [qwenLoginSession]);
+
+  useEffect(() => {
+    if (!codexLoginSession) {
+      return;
+    }
     if (codexLoginStatusRef.current === codexLoginSession.status) {
       return;
     }
@@ -319,8 +186,8 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
       setNotice({
         tone: "success",
         message: codexLoginSession.profile
-          ? t("provider.success.loginWithProfile", { label: codexLoginSession.profile.display_label })
-          : t("provider.success.loginCompleted"),
+          ? `Codex OAuth 已连接：${codexLoginSession.profile.display_label}`
+          : "Codex OAuth 登录已完成",
       });
     }
     if (codexLoginSession.status === "failed" && codexLoginSession.error) {
@@ -328,592 +195,499 @@ export function ProviderSettings({ customize, error }: ProviderSettingsProps) {
     }
   }, [codexLoginSession]);
 
+  useEffect(() => {
+    if (!qwenLoginSession) {
+      return;
+    }
+    if (qwenLoginStatusRef.current === qwenLoginSession.status) {
+      return;
+    }
+    qwenLoginStatusRef.current = qwenLoginSession.status;
+    if (qwenLoginSession.status === "completed") {
+      void refreshPageData();
+      setNotice({
+        tone: "success",
+        message: qwenLoginSession.account
+          ? `Qwen OAuth 已连接：${qwenLoginSession.account.display_label}`
+          : "Qwen OAuth 登录已完成",
+      });
+    }
+    if (qwenLoginSession.status === "failed" && qwenLoginSession.error) {
+      setNotice({ tone: "error", message: qwenLoginSession.error });
+    }
+  }, [qwenLoginSession]);
+
   async function handleRefresh() {
     setBusyAction("refresh");
     try {
       await refreshPageData();
-      setNotice({ tone: "success", message: t("provider.success.refreshed") });
+      setNotice({ tone: "success", message: "模型服务状态已刷新" });
     } catch (refreshError) {
-      const message =
-        refreshError instanceof Error ? refreshError.message : t("provider.error.refreshFailed");
-      setNotice({ tone: "error", message });
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleToggleEnabled() {
-    setBusyAction("toggle-enabled");
-    try {
-      const provider = await ensureOpenAiProvider();
-      await upsertManagedProvider(
-        toManagedProviderPayload(provider, { enabled: !provider.enabled })
-      );
-      await refreshPageData();
       setNotice({
-        tone: "success",
-        message: provider.enabled ? t("provider.success.disabled") : t("provider.success.enabled"),
+        tone: "error",
+        message: errorMessage(refreshError) ?? "刷新状态失败",
       });
-    } catch (toggleError) {
-      const message =
-        toggleError instanceof Error ? toggleError.message : t("provider.error.toggleFailed");
-      setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleSync() {
-    setBusyAction("sync");
-    try {
-      const provider = await ensureOpenAiProvider();
-      if (!provider.enabled) {
-        throw new Error(t("provider.error.enableBeforeSync"));
-      }
-      const response = await syncManagedProvider(provider.id, { set_primary: false });
-      await refreshPageData();
-      setNotice({
-        tone: "success",
-        message: t("provider.success.synced", { path: response.result.config_path }),
-      });
-    } catch (syncError) {
-      const message =
-        syncError instanceof Error ? syncError.message : t("provider.error.syncFailed");
-      setNotice({ tone: "error", message });
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleImportCurrentAuth() {
-    setBusyAction("import-auth");
+  async function handleImportCodexAuth() {
+    setBusyAction("codex-import");
     try {
       await importCodexAuthProfile();
       await refreshPageData();
-      setNotice({
-        tone: "success",
-        message: t("provider.success.importedAuth"),
-      });
+      setNotice({ tone: "success", message: "当前 Codex 登录态已导入" });
     } catch (authError) {
-      const message =
-        authError instanceof Error ? authError.message : t("provider.error.importAuthFailed");
-      setNotice({ tone: "error", message });
+      setNotice({
+        tone: "error",
+        message: errorMessage(authError) ?? "导入 Codex 登录态失败",
+      });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleBeginLogin() {
-    setBusyAction("login");
+  async function handleBeginCodexLogin() {
+    setBusyAction("codex-login");
     try {
       const response = await beginCodexLogin();
       setCodexLoginSession(response.session);
       await openDashboardUrl(response.session.authorize_url);
       setNotice({
         tone: "info",
-        message: t("provider.success.loginPageOpened"),
+        message: "已打开 Codex OAuth 授权页，请在浏览器完成登录。",
       });
     } catch (loginError) {
-      const message =
-        loginError instanceof Error ? loginError.message : t("provider.error.loginFailed");
-      setNotice({ tone: "error", message });
+      setNotice({
+        tone: "error",
+        message: errorMessage(loginError) ?? "Codex OAuth 登录启动失败",
+      });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleActivateProfile(profileId: string) {
-    setBusyAction("activate-profile");
+  async function handleActivateCodexProfile(profileId: string) {
+    setBusyAction("codex-activate");
     try {
       await activateCodexAuthProfile(profileId);
       await refreshPageData();
-      setNotice({
-        tone: "success",
-        message: t("provider.success.profileActivated"),
-      });
+      setNotice({ tone: "success", message: "Codex 当前账号已切换" });
     } catch (activateError) {
-      const message =
-        activateError instanceof Error ? activateError.message : t("provider.error.activateProfileFailed");
-      setNotice({ tone: "error", message });
+      setNotice({
+        tone: "error",
+        message: errorMessage(activateError) ?? "切换 Codex 当前账号失败",
+      });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleRefreshProfile(profileId: string) {
-    setBusyAction("refresh-profile");
+  async function handleRefreshCodexProfile(profileId: string) {
+    setBusyAction("codex-refresh");
     try {
       await refreshCodexAuthProfile(profileId);
       await refreshPageData();
-      setNotice({ tone: "success", message: t("provider.success.profileRefreshed") });
+      setNotice({ tone: "success", message: "Codex 账号令牌已刷新" });
     } catch (refreshError) {
-      const message =
-        refreshError instanceof Error ? refreshError.message : t("provider.error.refreshProfileFailed");
-      setNotice({ tone: "error", message });
+      setNotice({
+        tone: "error",
+        message: errorMessage(refreshError) ?? "刷新 Codex 账号失败",
+      });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleRemoveProfile(profileId: string) {
-    setRemoveProfileId(profileId);
-  }
-
-  async function executeRemoveProfile(profileId: string) {
-    setRemoveProfileId(null);
-    setBusyAction("remove-profile");
+  async function handleRemoveCodexProfile(profileId: string) {
+    setBusyAction("codex-remove");
     try {
       await removeCodexAuthProfile(profileId);
       await refreshPageData();
-      setNotice({ tone: "success", message: t("provider.success.profileRemoved") });
+      setNotice({ tone: "success", message: "Codex 账号已移除" });
     } catch (removeError) {
-      const message =
-        removeError instanceof Error ? removeError.message : t("provider.error.removeProfileFailed");
-      setNotice({ tone: "error", message });
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleSetDefaultModel(modelId: string) {
-    setBusyAction("set-default-model");
-    try {
-      const provider = await ensureOpenAiProvider();
-      const reorderedModels = prioritizeModel(provider.models, modelId);
-      await upsertManagedProvider(
-        toManagedProviderPayload(provider, {
-          models: reorderedModels,
-        })
-      );
-      await refreshPageData();
       setNotice({
-        tone: "success",
-        message: t("provider.success.defaultModelSet", { modelId }),
+        tone: "error",
+        message: errorMessage(removeError) ?? "移除 Codex 账号失败",
       });
-    } catch (modelError) {
-      const message =
-        modelError instanceof Error ? modelError.message : t("provider.error.setDefaultModelFailed");
-      setNotice({ tone: "error", message });
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function handleOpenWebsite() {
-    const website = displayProvider?.website_url ?? openAiPreset?.website_url ?? null;
-    if (!website) return;
+  async function handleBeginQwenLogin() {
+    setBusyAction("qwen-login");
     try {
-      await openDashboardUrl(website);
-    } catch (openError) {
-      const message =
-        openError instanceof Error ? openError.message : t("provider.error.openWebsiteFailed");
-      setNotice({ tone: "error", message });
+      const response = await beginManagedAuthLogin(QWEN_PROVIDER_ID);
+      setQwenLoginSession(response.session);
+      if (response.session.authorize_url) {
+        await openDashboardUrl(response.session.authorize_url);
+      }
+      setNotice({
+        tone: "info",
+        message: "已打开 Qwen OAuth 授权页，请在浏览器完成登录。",
+      });
+    } catch (loginError) {
+      setNotice({
+        tone: "error",
+        message: errorMessage(loginError) ?? "Qwen OAuth 登录启动失败",
+      });
+    } finally {
+      setBusyAction(null);
     }
   }
 
-  const pageError =
-    errorMessage(providersQuery.error) ??
-    errorMessage(presetsQuery.error) ??
-    errorMessage(codexRuntimeQuery.error) ??
-    errorMessage(codexAuthOverviewQuery.error) ??
-    error;
+  async function handleSetDefaultQwenAccount(accountId: string) {
+    setBusyAction("qwen-set-default");
+    try {
+      await setManagedAuthDefaultAccount(QWEN_PROVIDER_ID, accountId);
+      await refreshPageData();
+      setNotice({ tone: "success", message: "Qwen 当前账号已切换" });
+    } catch (switchError) {
+      setNotice({
+        tone: "error",
+        message: errorMessage(switchError) ?? "切换 Qwen 当前账号失败",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRefreshQwenAccount(accountId: string) {
+    setBusyAction("qwen-refresh");
+    try {
+      await refreshManagedAuthAccount(QWEN_PROVIDER_ID, accountId);
+      await refreshPageData();
+      setNotice({ tone: "success", message: "Qwen 账号令牌已刷新" });
+    } catch (refreshError) {
+      setNotice({
+        tone: "error",
+        message: errorMessage(refreshError) ?? "刷新 Qwen 账号失败",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRemoveQwenAccount(accountId: string) {
+    setBusyAction("qwen-remove");
+    try {
+      await removeManagedAuthAccount(QWEN_PROVIDER_ID, accountId);
+      await refreshPageData();
+      setNotice({ tone: "success", message: "Qwen 账号已移除" });
+    } catch (removeError) {
+      setNotice({
+        tone: "error",
+        message: errorMessage(removeError) ?? "移除 Qwen 账号失败",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {(notice || pageError) && (
-        <StatusBanner
-          tone={notice?.tone ?? "error"}
-          message={notice?.message ?? pageError ?? ""}
-        />
-      )}
-
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <section className="overflow-hidden rounded-2xl border border-border bg-background">
-          <div className="border-b border-border px-5 py-4">
-            <div className="text-base font-semibold text-foreground">{t("provider.section.providerService")}</div>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              {t("provider.description.onlyOpenAi")}
-            </p>
-          </div>
-
-          <ScrollArea className="h-[min(72vh,860px)]">
-            <div className="space-y-4 p-4">
-              <button
-                type="button"
-                className={cn(
-                  "w-full rounded-2xl border px-4 py-4 text-left transition",
-                  "border-primary bg-primary/5"
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
-                    AI
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-base font-semibold text-foreground">OpenAI</div>
-                      <Badge variant="outline">{t("provider.badge.official")}</Badge>
-                      <Badge variant={displayProviderEnabled ? "default" : "secondary"}>
-                        {displayProviderEnabled ? t("provider.badge.enabled") : t("provider.badge.disabled")}
-                      </Badge>
-                    </div>
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      {activeProfile ? t("provider.status.connected", { label: activeProfile.display_label }) : t("provider.status.notLoggedIn")}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      <Badge variant="outline">{syncState.label}</Badge>
-                      {currentDefaultModelId ? (
-                        <Badge variant="outline">{currentDefaultModelId}</Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
-                {t("provider.note.unsupported")}
-              </div>
-            </div>
-          </ScrollArea>
-        </section>
-
-        <section className="rounded-2xl border border-border bg-background p-5">
-          {displayProvider ? (
-            <div className="space-y-5">
-              <div className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-2xl font-semibold text-foreground">OpenAI</h3>
-                    <Badge variant="outline">{t("provider.badge.official")}</Badge>
-                    <Badge variant="outline">{t("provider.badge.codexLogin")}</Badge>
-                    {displayProviderEnabled ? (
-                      <Badge variant="default">{t("provider.badge.enabled")}</Badge>
-                    ) : (
-                      <Badge variant="secondary">{t("provider.badge.disabled")}</Badge>
-                    )}
-                  </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {t("provider.description.openAiResponses")}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" onClick={() => void handleOpenWebsite()}>
-                    <ExternalLink className="size-4" />
-                    {t("provider.button.website")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleRefresh()}
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === "refresh" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="size-4" />
-                    )}
-                    {t("provider.button.refreshStatus")}
-                  </Button>
-                  <Button
-                    onClick={() => void handleSync()}
-                    disabled={busyAction !== null || !displayProviderEnabled}
-                  >
-                    {busyAction === "sync" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Cloud className="size-4" />
-                    )}
-                    {t("provider.button.syncToCodex")}
-                  </Button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors",
-                      displayProviderEnabled
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground"
-                    )}
-                    onClick={() => void handleToggleEnabled()}
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === "toggle-enabled" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : displayProviderEnabled ? (
-                      t("provider.badge.enabled")
-                    ) : (
-                      t("provider.badge.disabled")
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {warningBanner ? <NoticeBar message={warningBanner} /> : null}
-
-              <SectionCard
-                title={t("provider.section.accountConnection")}
-                description={t("provider.description.codexLoginOnly")}
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <MetricCard
-                    label={t("provider.field.currentStatus")}
-                    value={activeProfile ? t("provider.loginStatus.loggedIn") : t("provider.loginStatus.notLoggedIn")}
-                    hint={
-                      activeProfile
-                        ? t("provider.field.currentAccount", { label: activeProfile.display_label })
-                        : t("provider.field.pleaseLogin")
-                    }
-                    tone={activeProfile ? "success" : "warning"}
-                  />
-                  <MetricCard
-                    label={t("provider.field.syncStatus")}
-                    value={syncState.label}
-                    hint={
-                      syncState.applied
-                        ? t("provider.field.syncActiveHint")
-                        : t("provider.field.syncPendingHint")
-                    }
-                    tone={syncState.applied ? "success" : "warning"}
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void handleBeginLogin()} disabled={busyAction !== null}>
-                    {busyAction === "login" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <LogIn className="size-4" />
-                    )}
-                    {t("provider.button.loginWithChatGPT")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleImportCurrentAuth()}
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === "import-auth" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    {t("provider.button.importCodexAuth")}
-                  </Button>
-                  {codexLoginSession?.status === "pending" ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => void openDashboardUrl(codexLoginSession.authorize_url)}
-                      disabled={busyAction !== null}
-                    >
-                      <ExternalLink className="size-4" />
-                      {t("provider.button.reopenAuthPage")}
-                    </Button>
-                  ) : null}
-                </div>
-
-                {codexLoginSession ? (
-                  <div className="rounded-2xl border border-border bg-muted/10 px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-medium text-foreground">{t("provider.field.lastLoginFlow")}</div>
-                      <Badge variant="outline">{formatLoginSessionStatus(codexLoginSession.status)}</Badge>
-                    </div>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {t("provider.field.redirectUri")}{codexLoginSession.redirect_uri}
-                    </div>
-                    {codexLoginSession.profile ? (
-                      <div className="mt-2 text-sm text-foreground">
-                        {t("provider.field.importedAccount")}{codexLoginSession.profile.display_label}
-                      </div>
-                    ) : null}
-                    {codexLoginSession.error ? (
-                      <div className="mt-2 text-sm text-destructive">
-                        {codexLoginSession.error}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {codexAuthOverview ? (
-                  <div className="space-y-3">
-                    {codexAuthOverview.profiles.map((profile) => (
-                      <ProfileCard
-                        key={profile.id}
-                        profile={profile}
-                        busyAction={busyAction}
-                        onActivate={() => void handleActivateProfile(profile.id)}
-                        onRefresh={() => void handleRefreshProfile(profile.id)}
-                        onRemove={() => void handleRemoveProfile(profile.id)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <LoadingBlock label={t("provider.loading.readingAuthStatus")} />
-                )}
-              </SectionCard>
-
-              <SectionCard
-                title={t("provider.section.serviceConfig")}
-                description={t("provider.description.readOnlyConfig")}
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <InfoField label={t("provider.field.authMethod")} value={t("provider.value.codexLogin")} />
-                  <InfoField label={t("provider.field.protocol")} value="OpenAI Responses" />
-                  <InfoField label={t("provider.field.apiUrl")} value={displayProvider.base_url} />
-                  <InfoField label={t("provider.field.officialSite")} value={displayProvider.website_url ?? "https://platform.openai.com"} />
-                  <InfoField label={t("provider.field.codexConfigFile")} value={codexRuntime?.config_path ?? "~/.codex/config.toml"} />
-                  <InfoField label={t("provider.field.authFile")} value={codexRuntime?.auth_path ?? "~/.codex/auth.json"} />
-                </div>
-              </SectionCard>
-
-              <SectionCard
-                title={t("provider.section.models")}
-                description={t("provider.description.modelCatalog")}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    {t("provider.field.defaultModel")}{currentDefaultModelId ?? t("provider.value.notSet")}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleRefresh()}
-                    disabled={busyAction !== null}
-                  >
-                    <RefreshCw className="size-4" />
-                    {t("provider.button.refreshModelStatus")}
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  {groupedModels.map((group) => (
-                    <div key={group.label} className="overflow-hidden rounded-2xl border border-border">
-                      <div className="border-b border-border bg-muted/20 px-4 py-3">
-                        <div className="text-sm font-semibold text-foreground">{group.label}</div>
-                      </div>
-                      <div className="divide-y divide-border">
-                        {group.models.map((model) => {
-                          const isDefault = currentDefaultModelId === model.model_id;
-                          return (
-                            <div
-                              key={model.model_id}
-                              className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-sm font-medium text-foreground">
-                                    {model.display_name}
-                                  </div>
-                                  {isDefault ? <Badge variant="default">{t("provider.badge.defaultModel")}</Badge> : null}
-                                </div>
-                                <div className="mt-2 text-xs text-muted-foreground">
-                                  {model.model_id}
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-1.5">
-                                  {formatCapabilityTags(model.capability_tags).map((tag) => (
-                                    <Badge key={tag} variant="outline">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant={isDefault ? "secondary" : "outline"}
-                                  disabled={busyAction !== null || isDefault}
-                                  onClick={() => void handleSetDefaultModel(model.model_id)}
-                                >
-                                  {busyAction === "set-default-model" ? (
-                                    <Loader2 className="size-4 animate-spin" />
-                                  ) : isDefault ? (
-                                    <CheckCircle2 className="size-4" />
-                                  ) : null}
-                                  {isDefault ? t("provider.button.currentDefault") : t("provider.button.setAsDefault")}
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
-
-              <SectionCard
-                title={t("provider.section.diagnostics")}
-                description={t("provider.description.diagnostics")}
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <InfoField label={t("provider.field.currentAccount2")} value={activeProfile?.display_label ?? t("provider.loginStatus.notLoggedIn")} />
-                  <InfoField
-                    label={t("provider.field.accountPlan")}
-                    value={activeProfile?.chatgpt_plan_type ?? codexRuntime?.auth_plan_type ?? t("provider.value.unknown")}
-                  />
-                  <InfoField label={t("provider.field.currentProvider")} value={codexRuntime?.active_provider_key ?? t("provider.value.notSet")} />
-                  <InfoField label={t("provider.field.currentModel")} value={codexRuntime?.model ?? customize?.model_label ?? t("provider.value.notSet")} />
-                </div>
-                <div className="space-y-2">
-                  {diagnostics.length > 0 ? (
-                    diagnostics.map((item) => (
-                      <DiagnosticRow
-                        key={`${item.tone}-${item.message}`}
-                        tone={item.tone}
-                        message={item.message}
-                      />
-                    ))
-                  ) : (
-                    <DiagnosticRow
-                      tone="warning"
-                      message={t("provider.diagnostics.waiting")}
-                    />
-                  )}
-                </div>
-              </SectionCard>
-            </div>
-          ) : (
-            <EmptyState
-              title={t("provider.loading.preparingService")}
-              body={t("provider.loading.autoInitialize")}
+    <div className="flex h-full min-h-0 gap-5">
+      <aside className="w-[300px] shrink-0 rounded-2xl border border-border bg-background p-4">
+        <div className="mb-4 text-sm font-medium text-foreground">模型服务</div>
+        <ScrollArea className="h-[calc(100vh-260px)] pr-3">
+          <div className="space-y-3">
+            <ProviderSummaryCard
+              title="OpenAI"
+              subtitle={
+                activeCodexProfile
+                  ? `已连接 ${activeCodexProfile.display_label}`
+                  : "尚未登录"
+              }
+              badges={[
+                "官方",
+                codexRuntime?.active_provider_key === CODEX_PROVIDER_ID ? "已写入 ~/.codex" : "未写入 ~/.codex",
+                codexProvider?.default_model_id ?? codexRuntime?.model ?? "gpt-5.4",
+              ]}
             />
-          )}
-        </section>
+            <ProviderSummaryCard
+              title="Qwen Code"
+              subtitle={
+                activeQwenAccount
+                  ? `当前账号：${activeQwenAccount.display_label}`
+                  : "尚未登录"
+              }
+              badges={[
+                "官方 OAuth",
+                qwenProvider?.runtime.synced ? "已写入 ~/.qwen" : "未写入 ~/.qwen",
+                ...(qwenAvailableModels.length > 0 ? qwenAvailableModels : ["coder-model"]),
+              ]}
+              accent="qwen"
+            />
+          </div>
+        </ScrollArea>
+      </aside>
+
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="space-y-5">
+          {error ? <NoticeBanner tone="error" message={error} /> : null}
+          {notice ? <NoticeBanner tone={notice.tone} message={notice.message} /> : null}
+
+          <SectionCard
+            title="OpenAI"
+            description="仅通过 Codex OAuth 管理账号，并把当前账号同步给 ~/.codex。"
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => void openDashboardUrl(codexProvider?.website_url ?? "https://platform.openai.com")}
+                >
+                  <ExternalLink className="size-4" />
+                  官网
+                </Button>
+                <Button variant="outline" onClick={() => void handleRefresh()} disabled={busyAction !== null}>
+                  {busyAction === "refresh" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-4" />
+                  )}
+                  刷新状态
+                </Button>
+              </>
+            }
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <InfoField
+                label="当前状态"
+                value={activeCodexProfile ? "已登录" : "未登录"}
+                hint={activeCodexProfile ? `当前账号：${activeCodexProfile.display_label}` : "尚未检测到 Codex OAuth 账号"}
+                tone={activeCodexProfile ? "success" : "warning"}
+              />
+              <InfoField
+                label="同步状态"
+                value={codexRuntime?.active_provider_key === CODEX_PROVIDER_ID ? "已写入" : "未写入"}
+                hint={codexRuntime?.config_path ? `同步目标：${codexRuntime.config_path}` : undefined}
+                tone={codexRuntime?.active_provider_key === CODEX_PROVIDER_ID ? "success" : "warning"}
+              />
+              <InfoField
+                label="默认模型"
+                value={codexProvider?.default_model_id ?? codexRuntime?.model ?? "gpt-5.4"}
+              />
+              <InfoField
+                label="可用模型"
+                value={compactModelList(codexProvider?.models.map((model) => model.model_id) ?? [])}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={() => void handleBeginCodexLogin()} disabled={busyAction !== null}>
+                {busyAction === "codex-login" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <LogIn className="size-4" />
+                )}
+                使用 ChatGPT 登录
+              </Button>
+              <Button variant="outline" onClick={() => void handleImportCodexAuth()} disabled={busyAction !== null}>
+                {busyAction === "codex-import" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                导入当前 Codex 登录态
+              </Button>
+            </div>
+
+            {codexLoginSession ? (
+              <LoginSessionCard
+                title="Codex OAuth 登录会话"
+                status={formatLoginStatus(codexLoginSession.status)}
+                lines={[
+                  codexLoginSession.authorize_url ? `授权地址：${codexLoginSession.authorize_url}` : null,
+                  codexLoginSession.profile ? `已导入账号：${codexLoginSession.profile.display_label}` : null,
+                  codexLoginSession.error ? `错误：${codexLoginSession.error}` : null,
+                ]}
+              />
+            ) : null}
+
+            <div className="mt-5 space-y-3">
+              {codexOverview?.profiles.length ? (
+                codexOverview.profiles.map((profile) => (
+                  <CodexProfileCard
+                    key={profile.id}
+                    profile={profile}
+                    busyAction={busyAction}
+                    onActivate={() => void handleActivateCodexProfile(profile.id)}
+                    onRefresh={() => void handleRefreshCodexProfile(profile.id)}
+                    onRemove={() => setRemoveCodexProfileId(profile.id)}
+                  />
+                ))
+              ) : (
+                <EmptyBlock label="还没有 Codex OAuth 账号，可直接浏览器登录或导入当前 ~/.codex/auth.json。" />
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Qwen Code"
+            description="仅通过 Qwen OAuth 管理账号，并把当前账号同步给 ~/.qwen。"
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => void openDashboardUrl(qwenProvider?.website_url ?? "https://chat.qwen.ai")}
+                >
+                  <ExternalLink className="size-4" />
+                  官网
+                </Button>
+                <Button variant="outline" onClick={() => void handleRefresh()} disabled={busyAction !== null}>
+                  {busyAction === "refresh" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-4" />
+                  )}
+                  刷新状态
+                </Button>
+              </>
+            }
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <InfoField
+                label="当前状态"
+                value={activeQwenAccount ? "已登录" : "未登录"}
+                hint={activeQwenAccount ? `当前账号：${activeQwenAccount.display_label}` : "尚未检测到 Qwen OAuth 账号"}
+                tone={activeQwenAccount ? "success" : "warning"}
+              />
+              <InfoField
+                label="同步状态"
+                value={qwenProvider?.runtime.synced ? "已写入" : "未写入"}
+                hint={qwenProvider?.runtime.auth_path ? `同步目标：${qwenProvider.runtime.auth_path}` : undefined}
+                tone={qwenProvider?.runtime.synced ? "success" : "warning"}
+              />
+              <InfoField
+                label="默认模型"
+                value={qwenProvider?.default_model_id ?? "coder-model"}
+              />
+              <InfoField
+                label="可用模型"
+                value={compactModelList(qwenAvailableModels)}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={() => void handleBeginQwenLogin()} disabled={busyAction !== null}>
+                {busyAction === "qwen-login" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <LogIn className="size-4" />
+                )}
+                浏览器登录
+              </Button>
+            </div>
+
+            {qwenLoginSession ? (
+              <LoginSessionCard
+                title="Qwen OAuth 登录会话"
+                status={formatLoginStatus(qwenLoginSession.status)}
+                lines={[
+                  qwenLoginSession.user_code ? `用户代码：${qwenLoginSession.user_code}` : null,
+                  qwenLoginSession.verification_uri ? `验证地址：${qwenLoginSession.verification_uri}` : null,
+                  qwenLoginSession.account ? `已导入账号：${qwenLoginSession.account.display_label}` : null,
+                  qwenLoginSession.error ? `错误：${qwenLoginSession.error}` : null,
+                ]}
+              />
+            ) : null}
+
+            <div className="mt-5 space-y-3">
+              {qwenAccounts.length ? (
+                qwenAccounts.map((account) => (
+                  <ManagedAuthAccountCard
+                    key={account.id}
+                    account={account}
+                    busyAction={busyAction}
+                    onActivate={() => void handleSetDefaultQwenAccount(account.id)}
+                    onRefresh={() => void handleRefreshQwenAccount(account.id)}
+                    onRemove={() => setRemoveQwenAccountId(account.id)}
+                  />
+                ))
+              ) : (
+                <EmptyBlock label="还没有 Qwen OAuth 账号，完成一次浏览器登录后会显示在这里。" />
+              )}
+            </div>
+          </SectionCard>
+        </div>
       </div>
 
       <ConfirmDialog
-        open={!!removeProfileId}
-        onOpenChange={(open) => { if (!open) setRemoveProfileId(null); }}
-        title="Remove account"
-        description="Remove this OpenAI login account? You can re-add it later by logging in again."
-        confirmLabel="Remove"
+        open={Boolean(removeCodexProfileId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveCodexProfileId(null);
+          }
+        }}
+        title="移除 Codex 账号"
+        description="移除后，该账号不会再作为 Warwolf 的当前 Codex OAuth 账号。"
+        confirmLabel="移除"
+        cancelLabel="取消"
         variant="destructive"
         onConfirm={() => {
-          if (removeProfileId) void executeRemoveProfile(removeProfileId);
+          if (removeCodexProfileId) {
+            void handleRemoveCodexProfile(removeCodexProfileId);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(removeQwenAccountId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveQwenAccountId(null);
+          }
+        }}
+        title="移除 Qwen 账号"
+        description="移除后，该账号不会再作为 Warwolf 的当前 Qwen OAuth 账号。"
+        confirmLabel="移除"
+        cancelLabel="取消"
+        variant="destructive"
+        onConfirm={() => {
+          if (removeQwenAccountId) {
+            void handleRemoveQwenAccount(removeQwenAccountId);
+          }
         }}
       />
     </div>
   );
 }
 
-function StatusBanner({
-  tone,
-  message,
+function ProviderSummaryCard({
+  title,
+  subtitle,
+  badges,
+  accent = "openai",
 }: {
-  tone: "info" | "success" | "error";
-  message: string;
+  title: string;
+  subtitle: string;
+  badges: string[];
+  accent?: "openai" | "qwen";
 }) {
-  const toneClassName =
-    tone === "success"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-foreground"
-      : tone === "info"
-        ? "border-border bg-muted/20 text-foreground"
-        : "border-destructive/30 bg-destructive/10 text-foreground";
   return (
-    <div className={cn("rounded-2xl border px-4 py-3 text-sm", toneClassName)}>{message}</div>
-  );
-}
-
-function NoticeBar({ message }: { message: string }) {
-  return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-foreground">
-      {message}
+    <div className="rounded-2xl border border-border bg-background p-4">
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white",
+            accent === "qwen" ? "bg-[#FF6A00]" : "bg-black"
+          )}
+        >
+          {accent === "qwen" ? "QW" : "AI"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold text-foreground">{title}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {badges.map((badge) => (
+              <Badge key={badge} variant="outline">
+                {badge}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -921,60 +695,107 @@ function NoticeBar({ message }: { message: string }) {
 function SectionCard({
   title,
   description,
+  actions,
   children,
 }: {
   title: string;
   description: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-muted/10 p-4">
-      <div className="mb-4">
-        <div className="text-sm font-semibold text-foreground">{title}</div>
-        <div className="mt-1 text-xs leading-5 text-muted-foreground">{description}</div>
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <div className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-2xl font-semibold text-foreground">{title}</h3>
+            <Badge variant="outline">官方 OAuth</Badge>
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="mt-5">{children}</div>
     </section>
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone: "success" | "warning";
-}) {
+function NoticeBanner({ tone, message }: Notice) {
   return (
     <div
       className={cn(
-        "rounded-2xl border px-4 py-4",
-        tone === "success"
-          ? "border-emerald-500/30 bg-emerald-500/10"
-          : "border-amber-500/30 bg-amber-500/10"
+        "rounded-xl border px-4 py-3 text-sm",
+        tone === "success" &&
+          "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        tone === "info" &&
+          "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+        tone === "error" &&
+          "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
       )}
     >
-      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-2 text-lg font-semibold text-foreground">{value}</div>
-      <div className="mt-2 text-xs leading-5 text-muted-foreground">{hint}</div>
+      {message}
     </div>
   );
 }
 
-function InfoField({ label, value }: { label: string; value: string }) {
+function InfoField({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "success" | "warning";
+}) {
   return (
-    <div className="rounded-2xl border border-border bg-background px-4 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-2 break-all text-sm text-foreground">{value}</div>
+    <div className="rounded-2xl border border-border bg-muted/20 p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-2 text-lg font-semibold",
+          tone === "success" && "text-emerald-600 dark:text-emerald-300",
+          tone === "warning" && "text-amber-600 dark:text-amber-300",
+          tone === "default" && "text-foreground"
+        )}
+      >
+        {value}
+      </div>
+      {hint ? <div className="mt-1 text-sm text-muted-foreground">{hint}</div> : null}
     </div>
   );
 }
 
-function ProfileCard({
+function LoginSessionCard({
+  title,
+  status,
+  lines,
+}: {
+  title: string;
+  status: string;
+  lines: Array<string | null>;
+}) {
+  return (
+    <div className="mt-4 rounded-2xl border border-border bg-muted/20 p-4">
+      <div className="flex items-center gap-2">
+        <div className="text-sm font-semibold text-foreground">{title}</div>
+        <Badge variant="outline">{status}</Badge>
+      </div>
+      <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+        {lines.filter(Boolean).map((line) => (
+          <div key={line}>{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CodexProfileCard({
   profile,
   busyAction,
   onActivate,
@@ -987,82 +808,39 @@ function ProfileCard({
   onRefresh: () => void;
   onRemove: () => void;
 }) {
-  const { t } = useTranslation();
-  const isCurrent = profile.active && profile.applied_to_codex;
   return (
-    <div
-      className={cn(
-        "rounded-2xl border bg-background px-4 py-4",
-        isCurrent
-          ? "border-emerald-500/35 bg-emerald-500/10"
-          : profile.active
-            ? "border-primary/35 bg-primary/5"
-            : profile.applied_to_codex
-              ? "border-sky-500/35 bg-sky-500/10"
-              : "border-border"
-      )}
-    >
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="rounded-2xl border border-border bg-background p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <UserRound className="size-4" />
-              {profile.display_label}
-            </div>
-            <Badge variant="outline">{formatCodexAuthSource(profile.auth_source)}</Badge>
+            <UserRound className="size-4 text-muted-foreground" />
+            <div className="font-medium text-foreground">{profile.display_label}</div>
+            {profile.active ? <Badge variant="default">当前账号</Badge> : null}
+            {profile.applied_to_codex ? <Badge variant="outline">Codex 生效中</Badge> : null}
             {profile.chatgpt_plan_type ? (
               <Badge variant="outline">{profile.chatgpt_plan_type}</Badge>
             ) : null}
-            {profile.active ? <Badge variant="default">{t("provider.badge.currentAccount")}</Badge> : null}
-            {profile.applied_to_codex ? (
-              <Badge variant={isCurrent ? "default" : "outline"}>{t("provider.badge.codexActive")}</Badge>
-            ) : null}
           </div>
-          <div className="mt-2 text-xs text-muted-foreground">{profile.email}</div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {t("provider.field.lastUpdated")}{formatEpoch(profile.updated_at_epoch)}
+          <div className="mt-2 text-sm text-muted-foreground">{profile.email}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            更新时间：{formatTimestamp(profile.updated_at_epoch)}
           </div>
         </div>
-
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant={isCurrent ? "secondary" : "outline"}
-            disabled={busyAction !== null || isCurrent}
-            onClick={onActivate}
-          >
-            {busyAction === "activate-profile" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-4" />
-            )}
-            {isCurrent ? t("provider.button.currentlyUsed") : t("provider.button.setAsCurrent")}
+          <Button variant="outline" size="sm" onClick={onActivate} disabled={busyAction !== null || profile.active}>
+            当前使用中
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busyAction !== null}
-            onClick={onRefresh}
-          >
-            {busyAction === "refresh-profile" ? (
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={busyAction !== null}>
+            {busyAction === "codex-refresh" ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <RefreshCw className="size-4" />
             )}
-            {t("provider.button.refreshToken")}
+            刷新令牌
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busyAction !== null}
-            onClick={onRemove}
-          >
-            {busyAction === "remove-profile" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Trash2 className="size-4" />
-            )}
-            {t("provider.button.remove")}
+          <Button variant="ghost" size="sm" onClick={onRemove} disabled={busyAction !== null}>
+            <Trash2 className="size-4" />
+            移除
           </Button>
         </div>
       </div>
@@ -1070,187 +848,138 @@ function ProfileCard({
   );
 }
 
-function DiagnosticRow({
-  tone,
-  message,
+function ManagedAuthAccountCard({
+  account,
+  busyAction,
+  onActivate,
+  onRefresh,
+  onRemove,
 }: {
-  tone: "success" | "warning";
-  message: string;
+  account: DesktopManagedAuthAccount;
+  busyAction: BusyAction;
+  onActivate: () => void;
+  onRefresh: () => void;
+  onRemove: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm text-foreground",
-        tone === "success"
-          ? "border-emerald-500/30 bg-emerald-500/10"
-          : "border-amber-500/30 bg-amber-500/10"
-      )}
-    >
-      {tone === "success" ? (
-        <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-      ) : (
-        <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-      )}
-      <div>{message}</div>
-    </div>
-  );
-}
-
-function LoadingBlock({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-2xl border border-border bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 px-8">
-      <div className="max-w-md text-center">
-        <div className="text-lg font-semibold text-foreground">{title}</div>
-        <div className="mt-2 text-sm leading-6 text-muted-foreground">{body}</div>
+    <div className="rounded-2xl border border-border bg-background p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <UserRound className="size-4 text-muted-foreground" />
+            <div className="font-medium text-foreground">{account.display_label}</div>
+            {account.is_default ? <Badge variant="default">当前账号</Badge> : null}
+            {account.applied_to_runtime ? <Badge variant="outline">运行中</Badge> : null}
+            {account.plan_label ? <Badge variant="outline">{account.plan_label}</Badge> : null}
+            <Badge variant="outline">{formatManagedAuthStatus(account.status)}</Badge>
+          </div>
+          <div className="mt-2 text-sm text-muted-foreground">{account.email ?? "未提供邮箱"}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            更新时间：{formatTimestamp(account.updated_at_epoch)}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={onActivate} disabled={busyAction !== null || account.is_default}>
+            当前使用中
+          </Button>
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={busyAction !== null}>
+            {busyAction === "qwen-refresh" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            刷新令牌
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onRemove} disabled={busyAction !== null}>
+            <Trash2 className="size-4" />
+            移除
+          </Button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyBlock({ label }: { label: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
+      {label}
     </div>
   );
 }
 
 function resolveCurrentCodexProfile(overview: DesktopCodexAuthOverview | null) {
-  if (!overview) return null;
+  if (!overview) {
+    return null;
+  }
   return (
-    overview.profiles.find((profile) => profile.active && profile.applied_to_codex) ??
     overview.profiles.find((profile) => profile.active) ??
     overview.profiles.find((profile) => profile.applied_to_codex) ??
     null
   );
 }
 
-function isOpenAiProvider(provider: DesktopManagedProvider) {
+function resolveCurrentManagedAuthAccount(accounts: DesktopManagedAuthAccount[]) {
   return (
-    provider.id === OPENAI_PROVIDER_PRESET_ID ||
-    provider.preset_id === OPENAI_PROVIDER_PRESET_ID ||
-    provider.provider_type === "codex_openai"
+    accounts.find((account) => account.is_default) ??
+    accounts.find((account) => account.applied_to_runtime) ??
+    null
   );
 }
 
-function toManagedProviderPayload(
-  source: DesktopProviderPreset | DesktopManagedProvider,
-  overrides?: Partial<{
-    enabled: boolean;
-    models: DesktopProviderModel[];
-  }>
-) {
-  const isManagedProvider = isManagedProviderSource(source);
-  return {
-    id: isManagedProvider ? source.id : OPENAI_PROVIDER_PRESET_ID,
-    name: source.name,
-    runtime_target: source.runtime_target,
-    category: source.category,
-    provider_type: source.provider_type,
-    billing_category: source.billing_category,
-    protocol: source.protocol,
-    base_url: source.base_url,
-    enabled: overrides?.enabled ?? (isManagedProvider ? source.enabled : true),
-    official_verified: source.official_verified,
-    preset_id: isManagedProvider
-      ? source.preset_id ?? (source.id === OPENAI_PROVIDER_PRESET_ID ? source.id : null)
-      : source.id === OPENAI_PROVIDER_PRESET_ID
-        ? source.id
-        : null,
-    website_url: source.website_url ?? null,
-    description: source.description ?? null,
-    models: overrides?.models ?? source.models,
-  };
-}
-
-function isManagedProviderSource(
-  source: DesktopProviderPreset | DesktopManagedProvider
-): source is DesktopManagedProvider {
-  return "api_key_masked" in source;
-}
-
-function prioritizeModel(models: DesktopProviderModel[], modelId: string) {
-  const selected = models.find((model) => model.model_id === modelId);
-  if (!selected) {
-    throw new Error(i18n.t("provider.error.modelNotFound", { modelId }));
-  }
-  return [selected, ...models.filter((model) => model.model_id !== modelId)];
-}
-
-function groupOpenAiModels(models: DesktopProviderModel[]) {
-  const groups = new Map<string, DesktopProviderModel[]>();
-  for (const model of models) {
-    const label = modelGroupLabel(model);
-    const current = groups.get(label) ?? [];
-    current.push(model);
-    groups.set(label, current);
-  }
-  const orderedKeys = ["GPT 5", "GPT 5.1", "GPT_IMAGE", "OTHER"];
-  const labelMap: Record<string, string> = {
-    "GPT 5": "GPT 5",
-    "GPT 5.1": "GPT 5.1",
-    "GPT_IMAGE": i18n.t("provider.modelGroup.gptImage"),
-    "OTHER": i18n.t("provider.modelGroup.other"),
-  };
-  return orderedKeys
-    .filter((key) => groups.has(key))
-    .map((key) => ({
-      label: labelMap[key] ?? key,
-      models: groups.get(key) ?? [],
-    }));
-}
-
-function modelGroupLabel(model: DesktopProviderModel) {
-  const haystack = `${model.model_id} ${model.display_name}`.toLowerCase();
-  if (haystack.includes("image")) return "GPT_IMAGE";
-  if (haystack.includes("gpt-5.1") || haystack.includes("gpt 5.1")) return "GPT 5.1";
-  if (haystack.includes("gpt-5") || haystack.includes("gpt 5")) return "GPT 5";
-  return "OTHER";
-}
-
-function formatCapabilityTags(tags: string[]) {
-  if (tags.length === 0) return [i18n.t("provider.modelTag.general")];
-  return tags.map((tag) => {
-    switch (tag) {
-      case "general":
-        return i18n.t("provider.modelTag.chat");
-      case "reasoning":
-        return i18n.t("provider.modelTag.reasoning");
-      case "coding":
-        return i18n.t("provider.modelTag.coding");
-      case "image":
-        return i18n.t("provider.modelTag.image");
-      default:
-        return tag;
-    }
-  });
-}
-
-function formatCodexAuthSource(source: DesktopCodexAuthSource) {
-  return source === "browser_login" ? i18n.t("provider.source.browserLogin") : i18n.t("provider.source.importAuthJson");
-}
-
-function formatLoginSessionStatus(status: DesktopCodexLoginSessionSnapshot["status"]) {
+function formatLoginStatus(status: string) {
   switch (status) {
     case "pending":
-      return i18n.t("provider.loginStatus.pending");
+      return "等待确认";
     case "completed":
-      return i18n.t("provider.loginStatus.completed");
+      return "已完成";
     case "failed":
-      return i18n.t("provider.loginStatus.failed");
+      return "失败";
     case "cancelled":
-      return i18n.t("provider.loginStatus.cancelled");
+      return "已取消";
     default:
       return status;
   }
 }
 
-function formatEpoch(epoch: number | null) {
-  if (!epoch) return i18n.t("provider.value.unknown");
-  return new Date(epoch * 1000).toLocaleString();
+function formatManagedAuthStatus(status: string) {
+  switch (status) {
+    case "ready":
+      return "可用";
+    case "expiring":
+      return "即将过期";
+    case "expired":
+      return "已过期";
+    case "needs_reauth":
+      return "需要重新授权";
+    default:
+      return status;
+  }
 }
 
-function errorMessage(value: unknown) {
-  return value instanceof Error ? value.message : undefined;
+function compactModelList(models: string[]) {
+  if (models.length === 0) {
+    return "未提供";
+  }
+  if (models.length <= 4) {
+    return models.join(", ");
+  }
+  return `${models.slice(0, 4).join(", ")} 等 ${models.length} 个`;
+}
+
+function formatTimestamp(epochSeconds: number | null | undefined) {
+  if (!epochSeconds) {
+    return "--";
+  }
+  return new Date(epochSeconds * 1000).toLocaleString("zh-CN");
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  return null;
 }

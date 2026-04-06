@@ -6,16 +6,16 @@ import { Download, FolderOpen, Loader2, Terminal, X } from "lucide-react";
 import {
   buildCodeToolsProviderCatalog,
   CLI_TOOLS,
-  CLAUDE_CODE,
+  findPreferredCodeToolModel,
   filterProvidersForTool,
-  GEMINI_CLI,
-  GITHUB_COPILOT_CLI,
+  getCodeToolLabel,
   getCodeToolModelUniqId,
   OPENAI_CODEX,
   parseEnvironmentVariables,
+  toolRequiresModel,
+  toolUsesManagedAuth,
   type CodeToolId,
 } from "@/features/code-tools";
-import { AnthropicProviderListPopover } from "@/features/code-tools/components/AnthropicProviderListPopover";
 import {
   findSelectedModel,
   ModelSelector,
@@ -25,8 +25,7 @@ import { Button } from "@/components/ui/button";
 import {
   getCodeToolAvailableTerminals,
   getCodexRuntime,
-  getManagedProviders,
-  getProviderPresets,
+  getManagedAuthProviders,
   installBunBinary,
   isBinaryExist,
   runCodeTool,
@@ -81,13 +80,9 @@ export function CodeToolsPage() {
   >([]);
   const [isLoadingTerminals, setIsLoadingTerminals] = useState(false);
 
-  const presetsQuery = useQuery({
-    queryKey: ["code-tools-provider-presets"],
-    queryFn: async () => (await getProviderPresets()).presets,
-  });
-  const managedProvidersQuery = useQuery({
-    queryKey: ["code-tools-managed-providers"],
-    queryFn: async () => (await getManagedProviders()).providers,
+  const managedAuthProvidersQuery = useQuery({
+    queryKey: ["code-tools-managed-auth-providers"],
+    queryFn: async () => (await getManagedAuthProviders()).providers,
   });
   const codexRuntimeQuery = useQuery({
     queryKey: ["code-tools-codex-runtime"],
@@ -95,28 +90,23 @@ export function CodeToolsPage() {
   });
 
   const providerCatalog = useMemo(
-    () =>
-      buildCodeToolsProviderCatalog(
-        managedProvidersQuery.data ?? [],
-        presetsQuery.data ?? []
-      ),
-    [managedProvidersQuery.data, presetsQuery.data]
+    () => buildCodeToolsProviderCatalog(managedAuthProvidersQuery.data ?? []),
+    [managedAuthProvidersQuery.data]
   );
   const availableProviders = useMemo(
     () => filterProvidersForTool(providerCatalog, selectedCliTool),
     [providerCatalog, selectedCliTool]
   );
-  const anthropicProviderNames = useMemo(
-    () =>
-      filterProvidersForTool(providerCatalog, CLAUDE_CODE).map(
-        (provider) => provider.name
-      ),
-    [providerCatalog]
-  );
+  const requiresModel = toolRequiresModel(selectedCliTool);
+  const usesManagedAuth = toolUsesManagedAuth(selectedCliTool);
 
   const selectedModelValue = selectedModel
     ? getCodeToolModelUniqId(selectedModel)
     : undefined;
+  const selectedAvailableModel = useMemo(
+    () => findSelectedModel(availableProviders, selectedModelValue),
+    [availableProviders, selectedModelValue]
+  );
   const codexAuthReady =
     codexRuntimeQuery.data?.has_chatgpt_tokens ||
     codexRuntimeQuery.data?.has_api_key ||
@@ -154,6 +144,36 @@ export function CodeToolsPage() {
     void loadAvailableTerminals();
   }, [checkBunInstallation, loadAvailableTerminals]);
 
+  useEffect(() => {
+    if (!requiresModel) {
+      return;
+    }
+
+    if (availableProviders.length === 0) {
+      if (selectedModel) {
+        setModel(null);
+      }
+      return;
+    }
+
+    if (selectedAvailableModel) {
+      return;
+    }
+
+    const preferredModel = findPreferredCodeToolModel(
+      availableProviders,
+      selectedCliTool
+    );
+    setModel(preferredModel);
+  }, [
+    availableProviders,
+    selectedAvailableModel,
+    selectedCliTool,
+    selectedModel,
+    setModel,
+    requiresModel,
+  ]);
+
   const handleModelChange = (value: string | undefined) => {
     setModel(findSelectedModel(availableProviders, value));
   };
@@ -188,7 +208,7 @@ export function CodeToolsPage() {
       api.warning(t("codetools.warning.workdirRequired"));
       return;
     }
-    if (!selectedModel && selectedCliTool !== GITHUB_COPILOT_CLI) {
+    if (requiresModel && !selectedModel) {
       api.warning(t("codetools.warning.modelRequired"));
       return;
     }
@@ -206,13 +226,10 @@ export function CodeToolsPage() {
               providerId: selectedModel.providerId,
               providerName: selectedModel.providerName,
               providerType: selectedModel.providerType,
-              runtimeTarget: selectedModel.runtimeTarget,
               baseUrl: selectedModel.baseUrl,
               protocol: selectedModel.protocol,
               modelId: selectedModel.modelId,
               displayName: selectedModel.displayName,
-              managedProviderId: selectedModel.managedProviderId,
-              presetId: selectedModel.presetId,
               hasStoredCredential: selectedModel.hasStoredCredential,
             }
           : null,
@@ -231,8 +248,9 @@ export function CodeToolsPage() {
   };
 
   const codexNoticeVisible = selectedCliTool === OPENAI_CODEX && !codexAuthReady;
-  const shouldShowModelSelector = selectedCliTool !== GITHUB_COPILOT_CLI;
   const shouldShowTerminalSelector = availableTerminals.length > 0;
+  const selectedToolLabel = getCodeToolLabel(selectedCliTool);
+  const noProvidersToolLabel = selectedToolLabel;
 
   return (
     <div className="flex flex-1 flex-col bg-background">
@@ -293,35 +311,40 @@ export function CodeToolsPage() {
             </div>
 
             {/* Model */}
-            {shouldShowModelSelector && (
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-body font-medium text-foreground">
-                  {t("codetools.label.model")}
-                  {selectedCliTool === CLAUDE_CODE && (
-                    <AnthropicProviderListPopover
-                      providerNames={anthropicProviderNames}
-                    />
-                  )}
-                </div>
-                <ModelSelector
-                  providers={availableProviders}
-                  value={selectedModelValue}
-                  placeholder={t("codetools.placeholder.selectModel")}
-                  onChange={handleModelChange}
-                />
-                {availableProviders.length === 0 && (
-                  <p className="mt-1 text-body-sm text-muted-foreground">
-                    {t("codetools.notice.noProviders")}
-                    {selectedCliTool === CLAUDE_CODE
-                      ? " Claude Code"
-                      : selectedCliTool === GEMINI_CLI
-                        ? " Gemini CLI"
-                        : t("codetools.notice.thisTool")}
-                    {t("codetools.notice.presetsShown")}
-                  </p>
-                )}
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-body font-medium text-foreground">
+                {t("codetools.label.model")}
               </div>
-            )}
+              {requiresModel ? (
+                <>
+                  <ModelSelector
+                    providers={availableProviders}
+                    value={selectedModelValue}
+                    placeholder={t("codetools.placeholder.selectModel")}
+                    onChange={handleModelChange}
+                  />
+                  {availableProviders.length === 0 && (
+                    <p className="mt-1 text-body-sm text-muted-foreground">
+                      {t("codetools.notice.noProviders")} {noProvidersToolLabel}
+                      {t("codetools.notice.presetsShown")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-3 text-body-sm text-muted-foreground">
+                  <div>{t("codetools.notice.modelOptional")}</div>
+                  <div className="mt-1">
+                    {usesManagedAuth
+                      ? t("codetools.notice.managedAuthLaunch", {
+                          tool: selectedToolLabel,
+                        })
+                      : t("codetools.notice.localCliLaunch", {
+                          tool: selectedToolLabel,
+                        })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Working directory */}
             <div>

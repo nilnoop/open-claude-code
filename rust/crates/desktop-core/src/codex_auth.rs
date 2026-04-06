@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, Mutex};
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 const PROFILES_STORE_DIR: &str = ".warwolf";
@@ -27,6 +28,9 @@ const DEFAULT_REFRESH_URL: &str = "https://auth.openai.com/oauth/token";
 const DEFAULT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const DEFAULT_OAUTH_ISSUER: &str = "https://auth.openai.com";
 const DEFAULT_ORIGINATOR: &str = "codex_cli_rs";
+const DEFAULT_CALLBACK_BIND_ADDR: &str = "127.0.0.1:1455";
+const DEFAULT_CALLBACK_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
+const LOGIN_SESSION_TIMEOUT_SECONDS: u64 = 15 * 60;
 const MACOS_CODEX_APP_PATH: &str = "/Applications/Codex.app";
 
 static LOGIN_SESSIONS: LazyLock<Mutex<HashMap<String, Arc<LoginSessionRuntime>>>> =
@@ -96,6 +100,11 @@ pub struct DesktopCodexLoginSessionSnapshot {
     pub updated_at_epoch: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DesktopCodexRuntimeTokens {
+    pub access_token: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ChatgptJwtClaims {
     pub email: Option<String>,
@@ -159,8 +168,11 @@ struct StoredCodexProfile {
     chatgpt_user_id: Option<String>,
     chatgpt_plan_type: Option<String>,
     auth_source: DesktopCodexAuthSource,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     id_token_raw: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     access_token: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     refresh_token: String,
     account_id: Option<String>,
     imported_from_auth_path: Option<String>,
@@ -374,6 +386,68 @@ pub(crate) fn read_auth_payload(codex_home_override: Option<&str>) -> Result<Val
     read_auth_json(&auth_path)
 }
 
+pub(crate) fn resolve_default_runtime_tokens() -> Result<DesktopCodexRuntimeTokens, String> {
+    let store = load_store()?;
+    let profile = default_profile_with_runtime_fallback(&store)?;
+    if profile.access_token.trim().is_empty() {
+        return Err("Codex 默认账号缺少 access token".to_string());
+    }
+    Ok(DesktopCodexRuntimeTokens {
+        access_token: profile.access_token,
+    })
+}
+
+pub(crate) fn prepare_code_tool_home(model_id: &str) -> Result<PathBuf, String> {
+    let store = load_store()?;
+    let profile = default_profile_with_runtime_fallback(&store)?;
+    let runtime_dir = current_home_dir()
+        .join(".warwolf")
+        .join("runtime")
+        .join("code-tools")
+        .join("codex")
+        .join(Uuid::new_v4().to_string());
+
+    fs::create_dir_all(&runtime_dir).map_err(|error| {
+        format!(
+            "create Codex code tool runtime dir failed ({}): {error}",
+            runtime_dir.display()
+        )
+    })?;
+
+    let auth_payload = serde_json::to_string_pretty(&CodexAuthJson {
+        auth_mode: Some("chatgpt".to_string()),
+        openai_api_key: None,
+        tokens: Some(CodexAuthTokens {
+            id_token: profile.id_token_raw.clone(),
+            access_token: profile.access_token.clone(),
+            refresh_token: profile.refresh_token.clone(),
+            account_id: profile.account_id.clone(),
+        }),
+        last_refresh: Some(now_rfc3339()?),
+    })
+    .map_err(|error| format!("serialize projected Codex auth failed: {error}"))?;
+
+    let auth_path = runtime_dir.join("auth.json");
+    fs::write(&auth_path, auth_payload).map_err(|error| {
+        format!(
+            "write projected Codex auth failed ({}): {error}",
+            auth_path.display()
+        )
+    })?;
+
+    let escaped_model = model_id.replace('\\', "\\\\").replace('"', "\\\"");
+    let config_payload = format!("model_provider = \"openai\"\nmodel = \"{escaped_model}\"\n");
+    let config_path = runtime_dir.join("config.toml");
+    fs::write(&config_path, config_payload).map_err(|error| {
+        format!(
+            "write projected Codex config failed ({}): {error}",
+            config_path.display()
+        )
+    })?;
+
+    Ok(runtime_dir)
+}
+
 pub(crate) fn has_chatgpt_tokens(payload: &Value) -> bool {
     payload
         .get("tokens")
@@ -554,6 +628,40 @@ fn find_profile(
         .find(|item| item.id == profile_id)
         .cloned()
         .ok_or_else(|| format!("Codex profile not found: {profile_id}"))
+}
+
+fn default_profile(store: &StoredCodexProfileStore) -> Result<StoredCodexProfile, String> {
+    if let Some(profile_id) = store.active_profile_id.as_deref() {
+        return find_profile(store, profile_id);
+    }
+
+    store
+        .profiles
+        .first()
+        .cloned()
+        .ok_or_else(|| "Codex 尚未连接任何账号".to_string())
+}
+
+fn default_profile_with_runtime_fallback(
+    store: &StoredCodexProfileStore,
+) -> Result<StoredCodexProfile, String> {
+    let profile = default_profile(store)?;
+    if !profile.access_token.trim().is_empty()
+        && !profile.refresh_token.trim().is_empty()
+        && !profile.id_token_raw.trim().is_empty()
+    {
+        return Ok(profile);
+    }
+
+    let runtime_auth_path = resolve_default_auth_path(None);
+    if runtime_auth_path.exists() {
+        return import_profile_from_auth_path(
+            &runtime_auth_path,
+            DesktopCodexAuthSource::ImportedAuthJson,
+        );
+    }
+
+    Ok(profile)
 }
 
 fn write_profile_to_auth_paths(
@@ -817,21 +925,14 @@ async fn refresh_profile_tokens(profile: StoredCodexProfile) -> Result<StoredCod
 async fn begin_login(
     options: BeginLoginOptions,
 ) -> Result<DesktopCodexLoginSessionSnapshot, String> {
+    cancel_pending_login_sessions().await;
+
     let session_id = Uuid::new_v4().to_string();
     let state_token = Uuid::new_v4().to_string();
     let pkce_verifier = build_pkce_verifier();
     let pkce_challenge = pkce_code_challenge(&pkce_verifier);
-    let listener = match tokio::net::TcpListener::bind("127.0.0.1:1455").await {
-        Ok(listener) => listener,
-        Err(_) => tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .map_err(|err| format!("bind Codex login callback server failed: {err}"))?,
-    };
-    let port = listener
-        .local_addr()
-        .map_err(|err| format!("read Codex login callback port failed: {err}"))?
-        .port();
-    let redirect_uri = format!("http://localhost:{port}/auth/callback");
+    let listener = bind_login_listener().await?;
+    let redirect_uri = DEFAULT_CALLBACK_REDIRECT_URI.to_string();
     let authorize_url = build_authorize_url(
         &options.issuer,
         &options.client_id,
@@ -868,12 +969,13 @@ async fn begin_login(
     let app = Router::new()
         .route("/auth/callback", get(handle_auth_callback))
         .with_state(runtime.clone());
+    let callback_runtime = runtime.clone();
     tokio::spawn(async move {
         let server = axum::serve(listener, app).with_graceful_shutdown(async {
             let _ = shutdown_receiver.await;
         });
         if let Err(err) = server.await {
-            let mut guard = runtime.state.lock().await;
+            let mut guard = callback_runtime.state.lock().await;
             if guard.status == DesktopCodexLoginSessionStatus::Pending {
                 guard.status = DesktopCodexLoginSessionStatus::Failed;
                 guard.error = Some(format!("Codex login callback server failed: {err}"));
@@ -882,7 +984,66 @@ async fn begin_login(
         }
     });
 
+    let timeout_runtime = runtime.clone();
+    tokio::spawn(async move {
+        sleep(Duration::from_secs(LOGIN_SESSION_TIMEOUT_SECONDS)).await;
+        let mut guard = timeout_runtime.state.lock().await;
+        if guard.status == DesktopCodexLoginSessionStatus::Pending {
+            guard.status = DesktopCodexLoginSessionStatus::Cancelled;
+            guard.error = Some("Codex OAuth 登录等待超时，请重新发起登录。".to_string());
+            guard.updated_at_epoch = now_unix_i64();
+            drop(guard);
+            if let Some(sender) = timeout_runtime.shutdown_sender.lock().await.take() {
+                let _ = sender.send(());
+            }
+        }
+    });
+
     poll_login(&session_id).await
+}
+
+async fn bind_login_listener() -> Result<tokio::net::TcpListener, String> {
+    let mut last_error = None;
+    for _ in 0..10 {
+        match tokio::net::TcpListener::bind(DEFAULT_CALLBACK_BIND_ADDR).await {
+            Ok(listener) => return Ok(listener),
+            Err(error) => {
+                last_error = Some(error);
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+
+    let detail = last_error
+        .map(|error| error.to_string())
+        .unwrap_or_else(|| "unknown bind failure".to_string());
+    Err(format!(
+        "bind Codex login callback server failed on {DEFAULT_CALLBACK_BIND_ADDR}: {detail}. \
+OpenAI 的 Codex ChatGPT 登录流要求固定回调地址 {DEFAULT_CALLBACK_REDIRECT_URI}，请关闭占用该端口的进程后重试。"
+    ))
+}
+
+async fn cancel_pending_login_sessions() {
+    let sessions = LOGIN_SESSIONS
+        .lock()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for runtime in sessions {
+        let mut guard = runtime.state.lock().await;
+        if guard.status != DesktopCodexLoginSessionStatus::Pending {
+            continue;
+        }
+        guard.status = DesktopCodexLoginSessionStatus::Cancelled;
+        guard.error = Some("已启动新的 Codex OAuth 登录，会话已被替换。".to_string());
+        guard.updated_at_epoch = now_unix_i64();
+        drop(guard);
+        if let Some(sender) = runtime.shutdown_sender.lock().await.take() {
+            let _ = sender.send(());
+        }
+    }
 }
 
 async fn poll_login(session_id: &str) -> Result<DesktopCodexLoginSessionSnapshot, String> {

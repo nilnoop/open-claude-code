@@ -20,6 +20,8 @@
   - `/apps/:id`：MinApp 详情页
   - `/code`：独立的 Code Tools 页面
 - `Code` 已从旧的 MinApp 模式提升为一级页面，并引入独立的 `code-tools` 状态与页面结构
+- 模型服务主链路现已收敛为本机托管的 `Codex OAuth` 与 `Qwen OAuth`
+- `Code Tools` 当前只消费这两条 OAuth 模型目录，不再支持第三方/API Key provider hub
 - `rust/` 只保留 `desktop-core`、`desktop-server`、`server` 三个本地 crate
 - `desktop-server` 会为桌面前端提供本地 HTTP API，默认地址为 `http://127.0.0.1:4357`
 - 旧的 vendored Rust core 已从仓库移除，当前实现以 parity 作为唯一上游
@@ -32,7 +34,7 @@ open-claude-code/
 │   └── desktop-shell/        # 当前主桌面应用（Tauri + React）
 ├── rust/                     # Rust 集成层 workspace
 │   └── crates/
-│       ├── desktop-core/     # 会话、provider、持久化、调度等桌面 domain
+│       ├── desktop-core/     # 会话、OAuth 模型服务、本地持久化、调度等桌面 domain
 │       ├── desktop-server/   # 提供 /api/desktop/* 的本地 HTTP 服务
 │       └── server/           # 更轻量的服务层
 ├── docs/                     # 设计评审与迁移文档
@@ -89,7 +91,6 @@ open-claude-code/
 
 - [open-claude-code-parity-dependency-design.md](docs/open-claude-code-parity-dependency-design.md)
 - [open-claude-code-parity-migration-checklist.md](docs/open-claude-code-parity-migration-checklist.md)
-- [warwolf-code-tools-strict-clone-design-review.md](docs/warwolf-code-tools-strict-clone-design-review.md)
 
 ## 开发环境
 

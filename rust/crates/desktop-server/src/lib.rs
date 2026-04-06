@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -13,18 +12,18 @@ use axum::{Json, Router};
 use desktop_core::{
     AppendDesktopMessageRequest, CreateDesktopDispatchItemRequest,
     CreateDesktopScheduledTaskRequest, CreateDesktopSessionRequest, DesktopBootstrap,
-    DesktopCodexAuthOverview, DesktopCodexLoginSessionSnapshot, DesktopCodexRuntimeState,
-    DesktopCustomizeState, DesktopDispatchItem, DesktopDispatchState, DesktopManagedProvider,
-    DesktopManagedProviderUpsertInput, DesktopOpenClawConfigWriteResult,
-    DesktopOpenClawRuntimeState, DesktopProviderConnectionTestInput,
-    DesktopProviderConnectionTestResult, DesktopProviderDeleteResult, DesktopProviderPreset,
-    DesktopProviderSyncResult, DesktopScheduledState, DesktopScheduledTask, DesktopSearchHit,
-    DesktopSessionDetail, DesktopSessionEvent, DesktopSessionSummary, DesktopSettingsState,
-    DesktopState, DesktopStateError, DesktopWorkbench, UpdateDesktopDispatchItemStatusRequest,
+    DesktopCodeToolLaunchProfile, DesktopCodexAuthOverview, DesktopCodexLoginSessionSnapshot,
+    DesktopCodexRuntimeState, DesktopCustomizeState, DesktopDispatchItem, DesktopDispatchState,
+    DesktopManagedAuthAccount, DesktopManagedAuthLoginSessionSnapshot, DesktopManagedAuthProvider,
+    DesktopScheduledState, DesktopScheduledTask, DesktopSearchHit, DesktopSessionDetail,
+    DesktopSessionEvent, DesktopSessionSummary, DesktopSettingsState, DesktopState,
+    DesktopStateError, DesktopWorkbench, UpdateDesktopDispatchItemStatusRequest,
     UpdateDesktopScheduledTaskRequest,
 };
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
+
+mod code_tools_bridge;
 
 #[derive(Clone, Default)]
 pub struct AppState {
@@ -89,43 +88,33 @@ pub struct DesktopSettingsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopProviderPresetsResponse {
-    pub presets: Vec<DesktopProviderPreset>,
+pub struct DesktopManagedAuthProvidersResponse {
+    pub providers: Vec<DesktopManagedAuthProvider>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopManagedProvidersResponse {
-    pub providers: Vec<DesktopManagedProvider>,
+pub struct DesktopManagedAuthAccountsResponse {
+    pub provider: DesktopManagedAuthProvider,
+    pub accounts: Vec<DesktopManagedAuthAccount>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopManagedProviderResponse {
-    pub provider: DesktopManagedProvider,
+pub struct DesktopManagedAuthLoginSessionResponse {
+    pub session: DesktopManagedAuthLoginSessionSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopProviderImportResponse {
-    pub providers: Vec<DesktopManagedProvider>,
+#[serde(rename_all = "camelCase")]
+pub struct DesktopCodeToolLaunchProfileRequest {
+    pub cli_tool: String,
+    pub provider_id: String,
+    pub model_id: String,
+    pub desktop_api_base: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopProviderDeleteResponse {
-    pub result: DesktopProviderDeleteResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopProviderSyncResponse {
-    pub result: DesktopProviderSyncResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopProviderConnectionTestResponse {
-    pub result: DesktopProviderConnectionTestResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopOpenClawRuntimeResponse {
-    pub runtime: DesktopOpenClawRuntimeState,
+pub struct DesktopCodeToolLaunchProfileResponse {
+    pub launch_profile: DesktopCodeToolLaunchProfile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -141,11 +130,6 @@ pub struct DesktopCodexAuthOverviewResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DesktopCodexLoginSessionResponse {
     pub session: DesktopCodexLoginSessionSnapshot,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DesktopOpenClawConfigWriteResponse {
-    pub result: DesktopOpenClawConfigWriteResult,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -168,26 +152,6 @@ struct SearchQuery {
     q: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct ProviderImportRequest {
-    provider_ids: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ProviderSyncRequest {
-    set_primary: Option<bool>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenclawEnvUpdateRequest {
-    env: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenclawToolsUpdateRequest {
-    tools: serde_json::Value,
-}
-
 type ApiError = (StatusCode, Json<ErrorResponse>);
 type ApiResult<T> = Result<T, ApiError>;
 
@@ -203,7 +167,6 @@ pub fn app(state: AppState) -> Router {
         .route("/api/desktop/bootstrap", get(bootstrap))
         .route("/api/desktop/workbench", get(workbench))
         .route("/api/desktop/customize", get(customize))
-        .route("/api/desktop/openclaw/runtime", get(openclaw_runtime))
         .route("/api/desktop/codex/runtime", get(codex_runtime))
         .route("/api/desktop/codex/auth", get(codex_auth_overview))
         .route(
@@ -224,32 +187,46 @@ pub fn app(state: AppState) -> Router {
             "/api/desktop/codex/auth/profiles/{id}",
             delete(remove_codex_auth_profile),
         )
+        .route("/api/desktop/auth/providers", get(managed_auth_providers))
         .route(
-            "/api/desktop/codex/import-live",
-            post(import_codex_live_providers),
-        )
-        .route("/api/desktop/openclaw/env", post(update_openclaw_env))
-        .route("/api/desktop/openclaw/tools", post(update_openclaw_tools))
-        .route("/api/desktop/providers/presets", get(provider_presets))
-        .route(
-            "/api/desktop/providers",
-            get(managed_providers).post(upsert_managed_provider),
+            "/api/desktop/auth/providers/{provider}/accounts",
+            get(managed_auth_accounts),
         )
         .route(
-            "/api/desktop/providers/test",
-            post(test_provider_connection),
+            "/api/desktop/code-tools/launch-profile",
+            post(code_tool_launch_profile),
         )
         .route(
-            "/api/desktop/providers/import-live",
-            post(import_live_providers),
+            "/api/desktop/code-tools/claude-bridge/{provider}",
+            get(code_tools_bridge::ready),
         )
         .route(
-            "/api/desktop/providers/{id}/sync",
-            post(sync_managed_provider),
+            "/api/desktop/code-tools/claude-bridge/{provider}/v1/messages",
+            post(code_tools_bridge::handle_messages),
         )
         .route(
-            "/api/desktop/providers/{id}",
-            delete(delete_managed_provider),
+            "/api/desktop/auth/providers/{provider}/import",
+            post(import_managed_auth_accounts),
+        )
+        .route(
+            "/api/desktop/auth/providers/{provider}/login",
+            post(begin_managed_auth_login),
+        )
+        .route(
+            "/api/desktop/auth/providers/{provider}/login/{id}",
+            get(poll_managed_auth_login),
+        )
+        .route(
+            "/api/desktop/auth/providers/{provider}/accounts/{id}/default",
+            post(set_managed_auth_default_account),
+        )
+        .route(
+            "/api/desktop/auth/providers/{provider}/accounts/{id}/refresh",
+            post(refresh_managed_auth_account),
+        )
+        .route(
+            "/api/desktop/auth/providers/{provider}/accounts/{id}",
+            delete(remove_managed_auth_account),
         )
         .route(
             "/api/desktop/dispatch",
@@ -321,17 +298,6 @@ async fn customize(State(state): State<AppState>) -> Json<DesktopCustomizeRespon
     Json(DesktopCustomizeResponse {
         customize: state.desktop().customize().await,
     })
-}
-
-async fn openclaw_runtime(
-    State(state): State<AppState>,
-) -> ApiResult<Json<DesktopOpenClawRuntimeResponse>> {
-    let runtime = state
-        .desktop()
-        .openclaw_runtime_state()
-        .await
-        .map_err(into_api_error)?;
-    Ok(Json(DesktopOpenClawRuntimeResponse { runtime }))
 }
 
 async fn codex_runtime(
@@ -426,118 +392,158 @@ async fn remove_codex_auth_profile(
     Ok(Json(DesktopCodexAuthOverviewResponse { overview }))
 }
 
-async fn update_openclaw_env(
+async fn managed_auth_providers(
     State(state): State<AppState>,
-    Json(payload): Json<OpenclawEnvUpdateRequest>,
-) -> ApiResult<Json<DesktopOpenClawConfigWriteResponse>> {
-    let result = state
-        .desktop()
-        .set_openclaw_env(payload.env)
-        .await
-        .map_err(into_api_error)?;
-    Ok(Json(DesktopOpenClawConfigWriteResponse { result }))
-}
-
-async fn update_openclaw_tools(
-    State(state): State<AppState>,
-    Json(payload): Json<OpenclawToolsUpdateRequest>,
-) -> ApiResult<Json<DesktopOpenClawConfigWriteResponse>> {
-    let result = state
-        .desktop()
-        .set_openclaw_tools(payload.tools)
-        .await
-        .map_err(into_api_error)?;
-    Ok(Json(DesktopOpenClawConfigWriteResponse { result }))
-}
-
-async fn provider_presets(State(state): State<AppState>) -> Json<DesktopProviderPresetsResponse> {
-    Json(DesktopProviderPresetsResponse {
-        presets: state.desktop().provider_presets().await,
-    })
-}
-
-async fn managed_providers(
-    State(state): State<AppState>,
-) -> ApiResult<Json<DesktopManagedProvidersResponse>> {
+) -> ApiResult<Json<DesktopManagedAuthProvidersResponse>> {
     let providers = state
         .desktop()
-        .managed_providers()
+        .managed_auth_providers()
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopManagedProvidersResponse { providers }))
+    Ok(Json(DesktopManagedAuthProvidersResponse { providers }))
 }
 
-async fn upsert_managed_provider(
+async fn managed_auth_accounts(
     State(state): State<AppState>,
-    Json(payload): Json<DesktopManagedProviderUpsertInput>,
-) -> ApiResult<Json<DesktopManagedProviderResponse>> {
-    let provider = state
+    Path(provider): Path<String>,
+) -> ApiResult<Json<DesktopManagedAuthAccountsResponse>> {
+    let provider_state = state
         .desktop()
-        .upsert_managed_provider(payload)
+        .managed_auth_provider(&provider)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopManagedProviderResponse { provider }))
+    let accounts = state
+        .desktop()
+        .managed_auth_accounts(&provider)
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopManagedAuthAccountsResponse {
+        provider: provider_state,
+        accounts,
+    }))
 }
 
-async fn test_provider_connection(
+async fn import_managed_auth_accounts(
     State(state): State<AppState>,
-    Json(payload): Json<DesktopProviderConnectionTestInput>,
-) -> ApiResult<Json<DesktopProviderConnectionTestResponse>> {
-    let result = state
+    Path(provider): Path<String>,
+) -> ApiResult<Json<DesktopManagedAuthAccountsResponse>> {
+    let accounts = state
         .desktop()
-        .test_provider_connection(payload)
+        .import_managed_auth_accounts(&provider)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopProviderConnectionTestResponse { result }))
+    let provider_state = state
+        .desktop()
+        .managed_auth_provider(&provider)
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopManagedAuthAccountsResponse {
+        provider: provider_state,
+        accounts,
+    }))
 }
 
-async fn import_live_providers(
+async fn begin_managed_auth_login(
     State(state): State<AppState>,
-    Json(payload): Json<ProviderImportRequest>,
-) -> ApiResult<Json<DesktopProviderImportResponse>> {
-    let providers = state
+    Path(provider): Path<String>,
+) -> ApiResult<Json<DesktopManagedAuthLoginSessionResponse>> {
+    let session = state
         .desktop()
-        .import_managed_providers_from_openclaw_live(payload.provider_ids)
+        .begin_managed_auth_login(&provider)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopProviderImportResponse { providers }))
+    Ok(Json(DesktopManagedAuthLoginSessionResponse { session }))
 }
 
-async fn import_codex_live_providers(
+async fn poll_managed_auth_login(
     State(state): State<AppState>,
-    Json(payload): Json<ProviderImportRequest>,
-) -> ApiResult<Json<DesktopProviderImportResponse>> {
-    let providers = state
+    Path((provider, id)): Path<(String, String)>,
+) -> ApiResult<Json<DesktopManagedAuthLoginSessionResponse>> {
+    let session = state
         .desktop()
-        .import_managed_providers_from_codex_live(payload.provider_ids)
+        .poll_managed_auth_login(&provider, &id)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopProviderImportResponse { providers }))
+    Ok(Json(DesktopManagedAuthLoginSessionResponse { session }))
 }
 
-async fn sync_managed_provider(
+async fn set_managed_auth_default_account(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(payload): Json<ProviderSyncRequest>,
-) -> ApiResult<Json<DesktopProviderSyncResponse>> {
-    let result = state
+    Path((provider, id)): Path<(String, String)>,
+) -> ApiResult<Json<DesktopManagedAuthAccountsResponse>> {
+    let accounts = state
         .desktop()
-        .sync_managed_provider_to_openclaw(&id, payload.set_primary.unwrap_or(false))
+        .set_managed_auth_default_account(&provider, &id)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopProviderSyncResponse { result }))
+    let provider_state = state
+        .desktop()
+        .managed_auth_provider(&provider)
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopManagedAuthAccountsResponse {
+        provider: provider_state,
+        accounts,
+    }))
 }
 
-async fn delete_managed_provider(
+async fn refresh_managed_auth_account(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<Json<DesktopProviderDeleteResponse>> {
-    let result = state
+    Path((provider, id)): Path<(String, String)>,
+) -> ApiResult<Json<DesktopManagedAuthAccountsResponse>> {
+    let accounts = state
         .desktop()
-        .delete_managed_provider(&id)
+        .refresh_managed_auth_account(&provider, &id)
         .await
         .map_err(into_api_error)?;
-    Ok(Json(DesktopProviderDeleteResponse { result }))
+    let provider_state = state
+        .desktop()
+        .managed_auth_provider(&provider)
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopManagedAuthAccountsResponse {
+        provider: provider_state,
+        accounts,
+    }))
+}
+
+async fn remove_managed_auth_account(
+    State(state): State<AppState>,
+    Path((provider, id)): Path<(String, String)>,
+) -> ApiResult<Json<DesktopManagedAuthAccountsResponse>> {
+    let accounts = state
+        .desktop()
+        .remove_managed_auth_account(&provider, &id)
+        .await
+        .map_err(into_api_error)?;
+    let provider_state = state
+        .desktop()
+        .managed_auth_provider(&provider)
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopManagedAuthAccountsResponse {
+        provider: provider_state,
+        accounts,
+    }))
+}
+
+async fn code_tool_launch_profile(
+    State(state): State<AppState>,
+    Json(request): Json<DesktopCodeToolLaunchProfileRequest>,
+) -> ApiResult<Json<DesktopCodeToolLaunchProfileResponse>> {
+    let launch_profile = state
+        .desktop()
+        .code_tool_launch_profile(
+            &request.cli_tool,
+            &request.provider_id,
+            &request.model_id,
+            &request.desktop_api_base,
+        )
+        .await
+        .map_err(into_api_error)?;
+    Ok(Json(DesktopCodeToolLaunchProfileResponse {
+        launch_profile,
+    }))
 }
 
 async fn dispatch(State(state): State<AppState>) -> Json<DesktopDispatchResponse> {

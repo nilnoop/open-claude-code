@@ -12,11 +12,11 @@ import {
   setSelectedModel,
   setSelectedTerminal,
 } from "@/store/slices/codeTools";
-import { GITHUB_COPILOT_CLI } from "@/features/code-tools";
 import type {
   CodeToolId,
   SelectedCodeToolModel,
 } from "@/features/code-tools";
+import { toolRequiresModel } from "@/features/code-tools";
 
 export function useCodeTools() {
   const dispatch = useAppDispatch();
@@ -97,10 +97,11 @@ export function useCodeTools() {
     codeToolsState.selectedModels[codeToolsState.selectedCliTool] ?? null;
   const environmentVariables =
     codeToolsState.environmentVariables[codeToolsState.selectedCliTool] ?? "";
+  const requiresModel = toolRequiresModel(codeToolsState.selectedCliTool);
   const canLaunch = Boolean(
     codeToolsState.selectedCliTool &&
       codeToolsState.currentDirectory &&
-      (codeToolsState.selectedCliTool === GITHUB_COPILOT_CLI || selectedModel)
+      (!requiresModel || (selectedModel && selectedModel.hasStoredCredential))
   );
 
   return {

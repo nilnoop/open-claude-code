@@ -135,10 +135,7 @@ pub fn find_openclaw_binary() -> Option<String> {
 
 /// Run `openclaw --version` and return the version string.
 pub fn get_openclaw_version(binary_path: &str) -> Option<String> {
-    let output = Command::new(binary_path)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new(binary_path).arg("--version").output().ok()?;
     if output.status.success() {
         let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let version = version

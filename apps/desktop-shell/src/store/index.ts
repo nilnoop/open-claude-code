@@ -16,6 +16,7 @@ import {
   useDispatch,
   useSelector,
 } from "react-redux";
+import { CODE_TOOL_IDS, DEFAULT_CODE_TOOL } from "@/features/code-tools";
 
 import tabsReducer from "./slices/tabs";
 import sessionsReducer from "./slices/sessions";
@@ -54,12 +55,57 @@ const sanitizeSettingsTransform = createTransform(
   { whitelist: ["settings"] }
 );
 
+const validCodeToolIds = new Set<string>(CODE_TOOL_IDS);
+
+function normalizeCodeToolsState(outboundState: unknown) {
+  if (!outboundState || typeof outboundState !== "object") {
+    return outboundState;
+  }
+
+  const state = outboundState as Record<string, unknown>;
+  const selectedCliTool =
+    typeof state.selectedCliTool === "string" &&
+    validCodeToolIds.has(state.selectedCliTool)
+      ? state.selectedCliTool
+      : DEFAULT_CODE_TOOL;
+  const selectedModels =
+    state.selectedModels && typeof state.selectedModels === "object"
+      ? (state.selectedModels as Record<string, unknown>)
+      : {};
+  const environmentVariables =
+    state.environmentVariables && typeof state.environmentVariables === "object"
+      ? (state.environmentVariables as Record<string, unknown>)
+      : {};
+
+  return {
+    ...state,
+    selectedCliTool,
+    selectedModels: Object.fromEntries(
+      CODE_TOOL_IDS.map((toolId) => [toolId, selectedModels[toolId] ?? null])
+    ),
+    environmentVariables: Object.fromEntries(
+      CODE_TOOL_IDS.map((toolId) => [
+        toolId,
+        typeof environmentVariables[toolId] === "string"
+          ? environmentVariables[toolId]
+          : "",
+      ])
+    ),
+  };
+}
+
+const normalizeCodeToolsTransform = createTransform(
+  (inboundState: unknown) => normalizeCodeToolsState(inboundState),
+  (outboundState: unknown) => normalizeCodeToolsState(outboundState),
+  { whitelist: ["codeTools"] }
+);
+
 const persistConfig = {
   key: "open-claude-code",
   version: 1,
   storage,
   blacklist: ["sessions", "ui", "permissions"],
-  transforms: [sanitizeSettingsTransform],
+  transforms: [sanitizeSettingsTransform, normalizeCodeToolsTransform],
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
