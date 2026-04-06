@@ -25,7 +25,9 @@ This document answers: how `desktop-shell` is currently organized.
 
 - Router owns navigational identity.
 - TanStack Query owns remote state.
-- Redux owns narrow local UI state.
+- Zustand owns local application state under `apps/desktop-shell/src/state/`.
+- Persisted Zustand domains currently include `settings`, `code-tools`, `minapps`, and `tabs`.
+- Permission prompts use a dedicated in-memory Zustand store and are not persisted.
 
 ## Change Policy
 
