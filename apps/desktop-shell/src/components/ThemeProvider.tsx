@@ -5,8 +5,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAppSelector, useAppDispatch } from "@/store";
-import { setTheme, setWarwolfTheme, type ThemeMode } from "@/store/slices/settings";
+import {
+  useSettingsStore,
+  type ThemeMode,
+} from "@/state/settings-store";
 
 type ResolvedTheme = "light" | "dark";
 
@@ -27,9 +29,10 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const dispatch = useAppDispatch();
-  const theme = useAppSelector((s) => s.settings.theme);
-  const warwolfTheme = useAppSelector((s) => s.settings.warwolfTheme);
+  const theme = useSettingsStore((state) => state.theme);
+  const warwolfTheme = useSettingsStore((state) => state.warwolfTheme);
+  const setTheme = useSettingsStore((state) => state.setTheme);
+  const setWarwolfTheme = useSettingsStore((state) => state.setWarwolfTheme);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
 
   // Resolve and apply light/dark class
@@ -79,11 +82,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [warwolfTheme]);
 
   const setThemeMode = (mode: ThemeMode) => {
-    dispatch(setTheme(mode));
+    setTheme(mode);
   };
 
   const setWarwolf = (enabled: boolean) => {
-    dispatch(setWarwolfTheme(enabled));
+    setWarwolfTheme(enabled);
   };
 
   return (

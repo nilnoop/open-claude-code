@@ -11,20 +11,6 @@ import {
   Terminal,
   Settings,
 } from "lucide-react";
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  addTab,
-  setActiveTab,
-  removeTab,
-  sanitizePersistedTabs,
-  updateTabTitle,
-  type Tab,
-} from "@/store/slices/tabs";
-import {
-  removeOpenedApp,
-  setCurrentAppId,
-} from "@/store/slices/minapps";
-import { setViewMode } from "@/store/slices/ui";
 import { useTheme } from "@/components/ThemeProvider";
 import {
   getAllMinApps,
@@ -39,7 +25,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  buildHomeSectionHref,
+  buildHomeSessionHref,
+  parseHomeRouteState,
+} from "@/features/workbench/tab-helpers";
 import { cn } from "@/lib/utils";
+import { useTabsStore, type Tab } from "@/state/tabs-store";
+import { useMinappsStore } from "@/state/minapps-store";
 
 /**
  * Dual-row top bar — Claude Code desktop style:
@@ -51,28 +44,29 @@ import { cn } from "@/lib/utils";
  */
 export function TabBar() {
   const { t } = useTranslation();
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { tabs, activeTabId } = useAppSelector((s) => s.tabs);
-  const viewMode = useAppSelector((s) => s.ui.viewMode);
-  const openedKeepAliveApps = useAppSelector(
-    (s) => s.minapps.openedKeepAliveApps
+  const tabs = useTabsStore((state) => state.tabs);
+  const activeTabId = useTabsStore((state) => state.activeTabId);
+  const addTab = useTabsStore((state) => state.addTab);
+  const setActiveTab = useTabsStore((state) => state.setActiveTab);
+  const removeTab = useTabsStore((state) => state.removeTab);
+  const updateTabTitle = useTabsStore((state) => state.updateTabTitle);
+  const openedKeepAliveApps = useMinappsStore(
+    (state) => state.openedKeepAliveApps
   );
+  const removeOpenedApp = useMinappsStore((state) => state.removeOpenedApp);
+  const setCurrentAppId = useMinappsStore((state) => state.setCurrentAppId);
   const { theme, setThemeMode } = useTheme();
 
   const pathname = location.pathname;
-
-  useEffect(() => {
-    dispatch(sanitizePersistedTabs());
-  }, [dispatch]);
+  const homeRoute = parseHomeRouteState(location.search);
 
   // ─── Derived nav state ────────────────────────────────────────
   const isOnHome = pathname === "/home" || pathname === "/";
   const isOnApps = pathname.startsWith("/apps");
   const isOnCode = pathname === "/code";
-  const isSettingsActive =
-    isOnHome && viewMode.kind === "nav" && viewMode.section === "settings";
+  const isSettingsActive = isOnHome && homeRoute.section === "settings";
   const isHomeActive = isOnHome && !isSettingsActive;
   const isAppsActive = isOnApps;
   const isCodeActive = isOnCode;
@@ -99,32 +93,29 @@ export function TabBar() {
     const title = resolveMinAppTitle(minAppId);
     const existingTab = tabs.find((tab) => tab.id === tabId);
 
-    dispatch(setCurrentAppId(minAppId));
+    setCurrentAppId(minAppId);
 
     if (!existingTab) {
-      dispatch(
-        addTab({
-          id: tabId,
-          type: "minapp",
-          path: pathname,
-          title,
-          closable: true,
-        })
-      );
+      addTab({
+        id: tabId,
+        type: "minapp",
+        path: pathname,
+        title,
+        closable: true,
+      });
       return;
     }
 
     if (existingTab.title !== title) {
-      dispatch(updateTabTitle({ id: tabId, title }));
+      updateTabTitle({ id: tabId, title });
     }
 
-    dispatch(setActiveTab(tabId));
-  }, [dispatch, pathname, openedKeepAliveApps, tabs]);
+    setActiveTab(tabId);
+  }, [addTab, openedKeepAliveApps, pathname, setActiveTab, setCurrentAppId, tabs, updateTabTitle]);
 
   // ─── Row 1 nav handlers ──────────────────────────────────────
   const handleNavHome = () => {
-    dispatch(setViewMode({ kind: "nav", section: "overview" }));
-    navigate("/home");
+    navigate(buildHomeSectionHref("overview"));
   };
 
   const handleNavApps = () => {
@@ -136,23 +127,21 @@ export function TabBar() {
   };
 
   const handleNavSettings = () => {
-    dispatch(setViewMode({ kind: "nav", section: "settings" }));
-    navigate("/home");
+    navigate(buildHomeSectionHref("settings"));
   };
 
   // ─── Row 2 tab handlers ──────────────────────────────────────
   const handleTabSelect = (tab: Tab) => {
     const minAppId = getMinAppIdFromPath(tab.path);
     if (minAppId) {
-      dispatch(setCurrentAppId(minAppId));
+      setCurrentAppId(minAppId);
     }
-    dispatch(setActiveTab(tab.id));
+    setActiveTab(tab.id);
     navigate(tab.path);
   };
 
   const handleNewSession = () => {
-    dispatch(setViewMode({ kind: "nav", section: "session" }));
-    navigate("/home");
+    navigate(buildHomeSessionHref(null));
   };
 
   const handleTabClose = (tabId: string) => {
@@ -170,23 +159,22 @@ export function TabBar() {
 
     const closingAppId = getMinAppIdFromPath(closingTab.path);
     if (closingAppId) {
-      dispatch(removeOpenedApp(closingAppId));
+      removeOpenedApp(closingAppId);
       clearWebviewState(closingAppId);
     }
 
-    dispatch(removeTab(tabId));
+    removeTab(tabId);
 
     if (nextTab) {
       const nextAppId = getMinAppIdFromPath(nextTab.path);
       if (nextAppId) {
-        dispatch(setCurrentAppId(nextAppId));
+        setCurrentAppId(nextAppId);
       }
-      dispatch(setActiveTab(nextTab.id));
+      setActiveTab(nextTab.id);
       navigate(nextTab.path);
     } else {
       // No tabs left, go home
-      dispatch(setViewMode({ kind: "nav", section: "overview" }));
-      navigate("/home");
+      navigate(buildHomeSectionHref("overview"));
     }
   };
 

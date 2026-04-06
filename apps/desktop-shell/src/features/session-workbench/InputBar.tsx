@@ -17,11 +17,10 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppDispatch, useAppSelector } from "@/store";
 import {
-  setPermissionMode,
+  useSettingsStore,
   type PermissionMode,
-} from "@/store/slices/settings";
+} from "@/state/settings-store";
 
 /* ─── Permission mode config ────────────────────────────────────── */
 
@@ -103,8 +102,8 @@ export function InputBar({
   environmentLabel = "Local",
   inputRef,
 }: InputBarProps) {
-  const dispatch = useAppDispatch();
-  const permissionMode = useAppSelector((s) => s.settings.permissionMode);
+  const permissionMode = useSettingsStore((state) => state.permissionMode);
+  const setPermissionMode = useSettingsStore((state) => state.setPermissionMode);
   const modeConfig = getPermissionConfig(permissionMode);
 
   const [value, setValue] = useState("");
@@ -390,7 +389,7 @@ export function InputBar({
                           : "text-foreground hover:bg-accent/50"
                       )}
                       onClick={() => {
-                        dispatch(setPermissionMode(mode.value));
+                        setPermissionMode(mode.value);
                         setShowPermissionMenu(false);
                       }}
                     >

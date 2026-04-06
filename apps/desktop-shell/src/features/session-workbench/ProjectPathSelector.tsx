@@ -15,8 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useAppDispatch, useAppSelector } from "@/store";
-import { setDefaultProjectPath } from "@/store/slices/settings";
+import { useSettingsStore } from "@/state/settings-store";
 
 interface ProjectPathSelectorProps {
   value?: string;
@@ -34,8 +33,10 @@ export function ProjectPathSelector({
   compact = false,
   className,
 }: ProjectPathSelectorProps) {
-  const dispatch = useAppDispatch();
-  const storedPath = useAppSelector((s) => s.settings.defaultProjectPath);
+  const storedPath = useSettingsStore((state) => state.defaultProjectPath);
+  const setDefaultProjectPath = useSettingsStore(
+    (state) => state.setDefaultProjectPath
+  );
   const currentPath = value ?? storedPath ?? "";
   const [isSelecting, setIsSelecting] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
@@ -54,7 +55,7 @@ export function ProjectPathSelector({
       if (result && !Array.isArray(result)) {
         onChange?.(result);
         if (persistToSettings) {
-          dispatch(setDefaultProjectPath(result));
+          setDefaultProjectPath(result);
         }
         setManualPath(result);
       }
@@ -64,26 +65,26 @@ export function ProjectPathSelector({
     } finally {
       setIsSelecting(false);
     }
-  }, [onChange, persistToSettings, dispatch]);
+  }, [onChange, persistToSettings, setDefaultProjectPath]);
 
   const handleManualSubmit = useCallback(() => {
     const trimmed = manualPath.trim();
     if (trimmed) {
       onChange?.(trimmed);
       if (persistToSettings) {
-        dispatch(setDefaultProjectPath(trimmed));
+        setDefaultProjectPath(trimmed);
       }
     }
     setShowManualInput(false);
-  }, [manualPath, onChange, persistToSettings, dispatch]);
+  }, [manualPath, onChange, persistToSettings, setDefaultProjectPath]);
 
   const handleClear = useCallback(() => {
     onChange?.("");
     if (persistToSettings) {
-      dispatch(setDefaultProjectPath(""));
+      setDefaultProjectPath("");
     }
     setManualPath("");
-  }, [onChange, persistToSettings, dispatch]);
+  }, [onChange, persistToSettings, setDefaultProjectPath]);
 
   if (compact) {
     return (

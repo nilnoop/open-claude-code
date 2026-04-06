@@ -11,8 +11,6 @@ import {
   FileJson,
   Trash2,
 } from "lucide-react";
-import { useAppDispatch } from "@/store";
-import { setShowSessionSidebar } from "@/store/slices/settings";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { truncate, cn } from "@/lib/utils";
 import type { DesktopSessionSection, DesktopSessionSummary } from "@/lib/tauri";
+import { useSettingsStore } from "@/state/settings-store";
 
 interface SessionWorkbenchSidebarProps {
   sessionSections: DesktopSessionSection[];
@@ -45,7 +44,9 @@ export function SessionWorkbenchSidebar({
   onExportSession,
   isCreatingSession,
 }: SessionWorkbenchSidebarProps) {
-  const dispatch = useAppDispatch();
+  const setShowSessionSidebar = useSettingsStore(
+    (state) => state.setShowSessionSidebar
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -132,7 +133,7 @@ export function SessionWorkbenchSidebar({
                 variant="ghost"
                 size="icon"
                 className="size-6"
-                onClick={() => dispatch(setShowSessionSidebar(false))}
+                onClick={() => setShowSessionSidebar(false)}
               >
                 <PanelLeftClose className="size-3.5" />
               </Button>

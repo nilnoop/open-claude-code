@@ -1,85 +1,27 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback } from "react";
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  addDirectory,
-  clearDirectories,
-  removeDirectory,
-  resetCodeTools,
-  setCurrentDirectory,
-  setEnvironmentVariables,
-  setSelectedCliTool,
-  setSelectedModel,
-  setSelectedTerminal,
-} from "@/store/slices/codeTools";
-import type {
-  CodeToolId,
-  SelectedCodeToolModel,
-} from "@/features/code-tools";
 import { toolRequiresModel } from "@/features/code-tools";
+import { useCodeToolsStore } from "@/state/code-tools-store";
 
 export function useCodeTools() {
-  const dispatch = useAppDispatch();
-  const codeToolsState = useAppSelector((state) => state.codeTools);
-
-  const setCliTool = useCallback(
-    (tool: CodeToolId) => {
-      dispatch(setSelectedCliTool(tool));
-    },
-    [dispatch]
+  const selectedCliTool = useCodeToolsStore((state) => state.selectedCliTool);
+  const selectedModels = useCodeToolsStore((state) => state.selectedModels);
+  const environmentVariablesByTool = useCodeToolsStore(
+    (state) => state.environmentVariables
   );
+  const directories = useCodeToolsStore((state) => state.directories);
+  const currentDirectory = useCodeToolsStore((state) => state.currentDirectory);
+  const selectedTerminal = useCodeToolsStore((state) => state.selectedTerminal);
+  const setCliTool = useCodeToolsStore((state) => state.setSelectedCliTool);
+  const setModel = useCodeToolsStore((state) => state.setSelectedModel);
+  const setTerminal = useCodeToolsStore((state) => state.setSelectedTerminal);
+  const setEnvVars = useCodeToolsStore((state) => state.setEnvironmentVariables);
+  const addDir = useCodeToolsStore((state) => state.addDirectory);
+  const removeDir = useCodeToolsStore((state) => state.removeDirectory);
+  const setCurrentDir = useCodeToolsStore((state) => state.setCurrentDirectory);
+  const clearDirs = useCodeToolsStore((state) => state.clearDirectories);
+  const resetSettings = useCodeToolsStore((state) => state.resetCodeTools);
 
-  const setModel = useCallback(
-    (model: SelectedCodeToolModel | null) => {
-      dispatch(setSelectedModel(model));
-    },
-    [dispatch]
-  );
-
-  const setTerminal = useCallback(
-    (terminal: string) => {
-      dispatch(setSelectedTerminal(terminal));
-    },
-    [dispatch]
-  );
-
-  const setEnvVars = useCallback(
-    (envVars: string) => {
-      dispatch(setEnvironmentVariables(envVars));
-    },
-    [dispatch]
-  );
-
-  const addDir = useCallback(
-    (directory: string) => {
-      dispatch(addDirectory(directory));
-    },
-    [dispatch]
-  );
-
-  const removeDir = useCallback(
-    (directory: string) => {
-      dispatch(removeDirectory(directory));
-    },
-    [dispatch]
-  );
-
-  const setCurrentDir = useCallback(
-    (directory: string) => {
-      dispatch(setCurrentDirectory(directory));
-    },
-    [dispatch]
-  );
-
-  const clearDirs = useCallback(() => {
-    dispatch(clearDirectories());
-  }, [dispatch]);
-
-  const resetSettings = useCallback(() => {
-    dispatch(resetCodeTools());
-  }, [dispatch]);
-
-  const selectFolder = useCallback(async () => {
+  const selectFolder = async () => {
     const result = await open({
       directory: true,
       multiple: false,
@@ -91,26 +33,25 @@ export function useCodeTools() {
 
     setCurrentDir(result);
     return result;
-  }, [setCurrentDir]);
+  };
 
-  const selectedModel =
-    codeToolsState.selectedModels[codeToolsState.selectedCliTool] ?? null;
+  const selectedModel = selectedModels[selectedCliTool] ?? null;
   const environmentVariables =
-    codeToolsState.environmentVariables[codeToolsState.selectedCliTool] ?? "";
-  const requiresModel = toolRequiresModel(codeToolsState.selectedCliTool);
+    environmentVariablesByTool[selectedCliTool] ?? "";
+  const requiresModel = toolRequiresModel(selectedCliTool);
   const canLaunch = Boolean(
-    codeToolsState.selectedCliTool &&
-      codeToolsState.currentDirectory &&
+    selectedCliTool &&
+      currentDirectory &&
       (!requiresModel || (selectedModel && selectedModel.hasStoredCredential))
   );
 
   return {
-    selectedCliTool: codeToolsState.selectedCliTool,
+    selectedCliTool,
     selectedModel,
-    selectedTerminal: codeToolsState.selectedTerminal,
+    selectedTerminal,
     environmentVariables,
-    directories: codeToolsState.directories,
-    currentDirectory: codeToolsState.currentDirectory,
+    directories,
+    currentDirectory,
     canLaunch,
     setCliTool,
     setModel,

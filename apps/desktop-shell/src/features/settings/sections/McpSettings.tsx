@@ -15,16 +15,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../components/SettingGroup";
-import { useAppDispatch, useAppSelector } from "@/store";
 import {
-  addMcpServer,
-  updateMcpServer,
-  removeMcpServer,
-  toggleMcpServer,
+  useSettingsStore,
   type UserMcpServer,
   type McpTransport,
   type McpScope,
-} from "@/store/slices/settings";
+} from "@/state/settings-store";
 import type { DesktopCustomizeState } from "@/lib/tauri";
 
 /* ─── Constants ────────────────────────────────────────────────── */
@@ -51,20 +47,21 @@ interface McpSettingsProps {
 }
 
 export function McpSettings({ customize, error }: McpSettingsProps) {
-  const dispatch = useAppDispatch();
-  const userServers = useAppSelector((s) => s.settings.mcpServers) ?? [];
+  const userServers = useSettingsStore((state) => state.mcpServers) ?? [];
+  const addMcpServer = useSettingsStore((state) => state.addMcpServer);
+  const updateMcpServer = useSettingsStore((state) => state.updateMcpServer);
+  const removeMcpServer = useSettingsStore((state) => state.removeMcpServer);
+  const toggleMcpServer = useSettingsStore((state) => state.toggleMcpServer);
   const discoveredServers = customize?.mcp_servers ?? [];
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const handleAdd = (server: Omit<UserMcpServer, "id" | "enabled">) => {
-    dispatch(
-      addMcpServer({
-        ...server,
-        id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        enabled: true,
-      })
-    );
+    addMcpServer({
+      ...server,
+      id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      enabled: true,
+    });
     setShowAddForm(false);
   };
 
@@ -72,7 +69,7 @@ export function McpSettings({ customize, error }: McpSettingsProps) {
     id: string,
     updates: Partial<UserMcpServer>
   ) => {
-    dispatch(updateMcpServer({ id, updates }));
+    updateMcpServer({ id, updates });
     setEditingId(null);
   };
 
@@ -84,12 +81,12 @@ export function McpSettings({ customize, error }: McpSettingsProps) {
   };
 
   const confirmDelete = () => {
-    if (deleteConfirmId) dispatch(removeMcpServer(deleteConfirmId));
+    if (deleteConfirmId) removeMcpServer(deleteConfirmId);
     setDeleteConfirmId(null);
   };
 
   const handleToggle = (id: string) => {
-    dispatch(toggleMcpServer(id));
+    toggleMcpServer(id);
   };
 
   return (

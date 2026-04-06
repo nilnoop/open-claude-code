@@ -35,7 +35,7 @@ type ViewMode =
 
 **Strategy**: Dual-track. Add `.theme-warwolf` CSS class override on `<html>`. Original shadcn theme preserved, switchable.
 
-**CSS variables added** (from DESIGN_TOKENS.md):
+**CSS variables added** (from `docs/desktop-shell/tokens/design-tokens.md`):
 - Light: pure gray backgrounds (`rgb(250,250,250)`), not warm tones
 - Dark: `rgb(25,25,25)` backgrounds
 - Brand: `rgb(215,119,87)` Claude Orange (identical in both modes)

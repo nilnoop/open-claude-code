@@ -1,9 +1,8 @@
 import { SettingGroup } from "../components/SettingGroup";
 import { cn } from "@/lib/utils";
-import { useAppDispatch, useAppSelector } from "@/store";
-import { setPermissionMode } from "@/store/slices/settings";
 import { PERMISSION_MODES } from "@/features/session-workbench/InputBar";
 import type { DesktopCustomizeState } from "@/lib/tauri";
+import { useSettingsStore } from "@/state/settings-store";
 
 interface PermissionSettingsProps {
   customize: DesktopCustomizeState | null;
@@ -14,8 +13,8 @@ export function PermissionSettings({
   customize,
   error,
 }: PermissionSettingsProps) {
-  const dispatch = useAppDispatch();
-  const currentMode = useAppSelector((s) => s.settings.permissionMode);
+  const currentMode = useSettingsStore((state) => state.permissionMode);
+  const setPermissionMode = useSettingsStore((state) => state.setPermissionMode);
 
   return (
     <div className="space-y-4">
@@ -36,7 +35,7 @@ export function PermissionSettings({
                     ? "border-primary bg-primary/5"
                     : "border-border hover:bg-muted/30"
                 )}
-                onClick={() => dispatch(setPermissionMode(mode.value))}
+                onClick={() => setPermissionMode(mode.value)}
               >
                 <Icon
                   className="size-5 shrink-0"

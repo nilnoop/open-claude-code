@@ -1,7 +1,7 @@
 import { Cpu, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppSelector } from "@/store";
 import { getPermissionConfig } from "./InputBar";
+import { useSettingsStore } from "@/state/settings-store";
 
 interface StatusLineProps {
   modelLabel?: string;
@@ -20,7 +20,7 @@ export function StatusLine({
   environmentLabel = "Local",
   isRunning = false,
 }: StatusLineProps) {
-  const permissionMode = useAppSelector((s) => s.settings.permissionMode);
+  const permissionMode = useSettingsStore((state) => state.permissionMode);
   const config = getPermissionConfig(permissionMode);
   const ModeIcon = config.icon;
 

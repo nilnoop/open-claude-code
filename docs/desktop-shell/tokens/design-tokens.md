@@ -1,3 +1,15 @@
+---
+title: Desktop Shell Design Tokens
+doc_type: token
+status: active
+owner: desktop-shell
+last_verified: 2026-04-06
+source_of_truth: true
+related:
+  - docs/desktop-shell/README.md
+  - docs/desktop-shell/operations/README.md
+---
+
 # Warwolf Desktop Design Token 规范
 
 > 基于 Claude Code v2.1.88 `src/utils/theme.ts` 逆向提取

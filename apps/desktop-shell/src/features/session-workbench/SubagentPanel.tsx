@@ -2,7 +2,7 @@
  * Subagent Panel — shows active and completed subagents in the current session.
  *
  * Derives subagent state from Agent tool_use / tool_result messages in the
- * conversation stream. Follows FUNCTIONAL_TOKENS.md §4.
+ * conversation stream. Follows docs/desktop-shell/tokens/functional-tokens.md §4.
  */
 
 import { useMemo } from "react";
@@ -20,7 +20,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
-import type { ConversationMessage } from "@/store/slices/sessions";
+import type { ConversationMessage } from "./types";
 
 /* ─── Types ────────────────────────────────────────────────────── */
 

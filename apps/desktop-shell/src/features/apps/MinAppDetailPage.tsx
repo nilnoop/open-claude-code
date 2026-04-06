@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useMinappPopup } from "@/hooks/useMinappPopup";
 import { useMinapps } from "@/hooks/useMinapps";
-import { useAppSelector } from "@/store";
 import { MinimalToolbar } from "@/components/MinApp/MinimalToolbar";
 import { MinAppTabsPool } from "@/components/MinApp/MinAppTabsPool";
 import { MinAppIcon } from "@/components/MinApp/MinAppIcon";
@@ -12,6 +11,7 @@ import {
   getWebviewLoaded,
   onWebviewStateChange,
 } from "@/utils/webviewStateManager";
+import { useMinappsStore } from "@/state/minapps-store";
 
 /**
  * Detail page rendered at `/apps/:appId`.
@@ -28,8 +28,8 @@ export function MinAppDetailPage() {
   const { appId } = useParams<{ appId: string }>();
   const { openMinappKeepAlive } = useMinappPopup();
   const { minapps } = useMinapps();
-  const openedKeepAliveApps = useAppSelector(
-    (s) => s.minapps.openedKeepAliveApps
+  const openedKeepAliveApps = useMinappsStore(
+    (state) => state.openedKeepAliveApps
   );
   const navigate = useNavigate();
 

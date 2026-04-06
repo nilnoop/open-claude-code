@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAppDispatch, useAppSelector } from "@/store";
 import { SessionWorkbenchSidebar } from "./SessionWorkbenchSidebar";
 import { SessionWorkbenchTerminal } from "./SessionWorkbenchTerminal";
 import { useSessionLifecycle } from "./useSessionLifecycle";
-import { updateTabSession } from "@/store/slices/tabs";
+import { sessionWorkbenchKeys } from "./api/query";
+import { workbenchKeys } from "@/features/workbench/api/query";
 import {
   setPendingPermission,
   inferToolRiskLevel,
@@ -21,6 +21,8 @@ import {
   subscribeToSessionEvents,
   type DesktopSessionDetail,
 } from "@/lib/tauri";
+import { useSettingsStore } from "@/state/settings-store";
+import { useTabsStore } from "@/state/tabs-store";
 
 interface SessionWorkbenchPageProps {
   tabId: string;
@@ -37,10 +39,10 @@ export function SessionWorkbenchPage({
   syncTabState = true,
   autoSelectFallbackSession = true,
 }: SessionWorkbenchPageProps) {
-  const dispatch = useAppDispatch();
-  const showSidebarPreference = useAppSelector(
-    (s) => s.settings.showSessionSidebar
+  const showSidebarPreference = useSettingsStore(
+    (state) => state.showSessionSidebar
   );
+  const updateTabSession = useTabsStore((state) => state.updateTabSession);
   const queryClient = useQueryClient();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     sessionId ?? null
@@ -59,14 +61,14 @@ export function SessionWorkbenchPage({
     (showSessionSidebar ?? showSidebarPreference) && !isNarrow;
 
   const workbenchQuery = useQuery({
-    queryKey: ["desktop-workbench"],
+    queryKey: workbenchKeys.root(),
     queryFn: getWorkbench,
   });
 
   const activeSessionId = sessionId ?? selectedSessionId;
 
   const activeSessionQuery = useQuery({
-    queryKey: ["desktop-session", activeSessionId],
+    queryKey: sessionWorkbenchKeys.detail(activeSessionId),
     queryFn: () => getSession(activeSessionId!),
     enabled: Boolean(activeSessionId),
   });
@@ -113,17 +115,14 @@ export function SessionWorkbenchPage({
 
     void subscribeToSessionEvents(activeSessionId, {
       onSnapshot: (session) => {
-        queryClient.setQueryData(["desktop-session", session.id], session);
-        void queryClient.invalidateQueries({ queryKey: ["desktop-workbench"] });
-        // Track streaming state from turn_state.
-        const isRunning = session.turn_state === "running";
-        dispatch(setStreaming(isRunning));
+        queryClient.setQueryData(sessionWorkbenchKeys.detail(session.id), session);
+        void queryClient.invalidateQueries({ queryKey: workbenchKeys.root() });
       },
       onMessage: (nextSessionId, message) => {
         // When a complete message arrives, clear the streaming buffer.
         dispatch(setStreaming(false));
         queryClient.setQueryData(
-          ["desktop-session", nextSessionId],
+          sessionWorkbenchKeys.detail(nextSessionId),
           (
             current: DesktopSessionDetail | undefined
           ): DesktopSessionDetail | undefined => {
@@ -137,7 +136,7 @@ export function SessionWorkbenchPage({
             };
           }
         );
-        void queryClient.invalidateQueries({ queryKey: ["desktop-workbench"] });
+        void queryClient.invalidateQueries({ queryKey: workbenchKeys.root() });
       },
       onTextDelta: (payload) => {
         dispatch(appendStreamingContent(payload.content));
@@ -175,19 +174,17 @@ export function SessionWorkbenchPage({
   useEffect(() => {
     if (!syncTabState) return;
     if (!activeSessionId) return;
-    dispatch(
-      updateTabSession({
-        id: tabId,
-        sessionId: activeSessionId,
-        title: activeSessionQuery.data?.title,
-      })
-    );
+    updateTabSession({
+      id: tabId,
+      sessionId: activeSessionId,
+      title: activeSessionQuery.data?.title,
+    });
   }, [
     activeSessionId,
     activeSessionQuery.data?.title,
-    dispatch,
     syncTabState,
     tabId,
+    updateTabSession,
   ]);
 
   const createSessionMutation = useMutation({
@@ -198,11 +195,11 @@ export function SessionWorkbenchPage({
       }),
     onSuccess: (response) => {
       queryClient.setQueryData(
-        ["desktop-session", response.session.id],
+        sessionWorkbenchKeys.detail(response.session.id),
         response.session
       );
       setSelectedSessionId(response.session.id);
-      void queryClient.invalidateQueries({ queryKey: ["desktop-workbench"] });
+      void queryClient.invalidateQueries({ queryKey: workbenchKeys.root() });
     },
   });
 
@@ -216,10 +213,10 @@ export function SessionWorkbenchPage({
     }) => appendMessage(nextSessionId, message),
     onSuccess: (response) => {
       queryClient.setQueryData(
-        ["desktop-session", response.session.id],
+        sessionWorkbenchKeys.detail(response.session.id),
         response.session
       );
-      void queryClient.invalidateQueries({ queryKey: ["desktop-workbench"] });
+      void queryClient.invalidateQueries({ queryKey: workbenchKeys.root() });
     },
   });
 

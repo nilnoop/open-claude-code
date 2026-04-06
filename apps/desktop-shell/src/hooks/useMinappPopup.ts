@@ -1,16 +1,9 @@
 import { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  addOpenedApp,
-  removeOpenedApp,
-  setCurrentAppId,
-  setAppShow,
-  setOpenedKeepAliveApps,
-} from "@/store/slices/minapps";
 import { clearWebviewState } from "@/utils/webviewStateManager";
 import { findAppById } from "@/config/minapps";
 import type { MinAppType } from "@/types/minapp";
+import { useMinappsStore } from "@/state/minapps-store";
 
 /**
  * Primary control hook for opening / closing MinApps.
@@ -19,12 +12,18 @@ import type { MinAppType } from "@/types/minapp";
  * Mirrors cherry-studio's useMinappPopup.ts
  */
 export function useMinappPopup() {
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const openedKeepAliveApps = useAppSelector(
-    (s) => s.minapps.openedKeepAliveApps
+  const openedKeepAliveApps = useMinappsStore(
+    (state) => state.openedKeepAliveApps
   );
-  const currentAppId = useAppSelector((s) => s.minapps.currentAppId);
+  const currentAppId = useMinappsStore((state) => state.currentAppId);
+  const addOpenedApp = useMinappsStore((state) => state.addOpenedApp);
+  const removeOpenedApp = useMinappsStore((state) => state.removeOpenedApp);
+  const setCurrentAppId = useMinappsStore((state) => state.setCurrentAppId);
+  const setAppShow = useMinappsStore((state) => state.setAppShow);
+  const setOpenedKeepAliveApps = useMinappsStore(
+    (state) => state.setOpenedKeepAliveApps
+  );
 
   // Keep a ref to avoid stale closures in closeAllMinapps
   const openedAppsRef = useRef(openedKeepAliveApps);
@@ -32,10 +31,10 @@ export function useMinappPopup() {
 
   const openMinappKeepAlive = useCallback(
     (app: MinAppType) => {
-      dispatch(addOpenedApp(app));
-      dispatch(setAppShow(true));
+      addOpenedApp(app);
+      setAppShow(true);
     },
-    [dispatch]
+    [addOpenedApp, setAppShow]
   );
 
   const openMinapp = useCallback(
@@ -64,24 +63,24 @@ export function useMinappPopup() {
 
   const closeMinapp = useCallback(
     (appId: string) => {
-      dispatch(removeOpenedApp(appId));
+      removeOpenedApp(appId);
       clearWebviewState(appId);
     },
-    [dispatch]
+    [removeOpenedApp]
   );
 
   const closeAllMinapps = useCallback(() => {
     for (const app of openedAppsRef.current) {
       clearWebviewState(app.id);
     }
-    dispatch(setOpenedKeepAliveApps([]));
-    dispatch(setCurrentAppId(""));
-    dispatch(setAppShow(false));
-  }, [dispatch]);
+    setOpenedKeepAliveApps([]);
+    setCurrentAppId("");
+    setAppShow(false);
+  }, [setAppShow, setCurrentAppId, setOpenedKeepAliveApps]);
 
   const hideMinappPopup = useCallback(() => {
-    dispatch(setAppShow(false));
-  }, [dispatch]);
+    setAppShow(false);
+  }, [setAppShow]);
 
   return {
     openMinapp,

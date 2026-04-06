@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import { useAppSelector } from "@/store";
 import { AppContainer } from "./NativeAppContainer";
 import { cn } from "@/lib/utils";
+import { useMinappsStore } from "@/state/minapps-store";
 
 
 /**
@@ -17,8 +17,8 @@ import { cn } from "@/lib/utils";
  * MinAppDetailPage, so this component fills its container fully.
  */
 export function MinAppTabsPool() {
-  const openedApps = useAppSelector((s) => s.minapps.openedKeepAliveApps);
-  const currentAppId = useAppSelector((s) => s.minapps.currentAppId);
+  const openedApps = useMinappsStore((state) => state.openedKeepAliveApps);
+  const currentAppId = useMinappsStore((state) => state.currentAppId);
   const location = useLocation();
 
   const isAppDetail = useMemo(() => {

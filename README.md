@@ -203,7 +203,7 @@ cargo check
 
 - [CLAW.md](CLAW.md)
 - [rust/README.md](rust/README.md)
-- [apps/desktop-shell/FUNCTIONAL_TOKENS.md](apps/desktop-shell/FUNCTIONAL_TOKENS.md)
+- [docs/desktop-shell/README.md](docs/desktop-shell/README.md)
 
 ## License
 

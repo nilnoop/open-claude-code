@@ -1,13 +1,7 @@
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  setTheme,
-  setFontSize,
-  setLanguage,
-  type ThemeMode,
-} from "@/store/slices/settings";
 import { SettingGroup, SettingRow } from "../components/SettingGroup";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useSettingsStore, type ThemeMode } from "@/state/settings-store";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -15,10 +9,12 @@ const LANGUAGES = [
 ] as const;
 
 export function GeneralSettings() {
-  const dispatch = useAppDispatch();
-  const theme = useAppSelector((s) => s.settings.theme);
-  const fontSize = useAppSelector((s) => s.settings.fontSize);
-  const language = useAppSelector((s) => s.settings.language);
+  const theme = useSettingsStore((state) => state.theme);
+  const fontSize = useSettingsStore((state) => state.fontSize);
+  const language = useSettingsStore((state) => state.language);
+  const setTheme = useSettingsStore((state) => state.setTheme);
+  const setFontSize = useSettingsStore((state) => state.setFontSize);
+  const setLanguage = useSettingsStore((state) => state.setLanguage);
 
   const themes: { value: ThemeMode; label: string }[] = [
     { value: "light", label: "Light" },
@@ -39,7 +35,7 @@ export function GeneralSettings() {
                 variant={theme === t.value ? "default" : "outline"}
                 size="sm"
                 className="text-xs"
-                onClick={() => dispatch(setTheme(t.value))}
+                onClick={() => setTheme(t.value)}
               >
                 {t.label}
               </Button>
@@ -54,7 +50,7 @@ export function GeneralSettings() {
                 variant={fontSize === size ? "default" : "outline"}
                 size="sm"
                 className={cn("w-10 text-xs")}
-                onClick={() => dispatch(setFontSize(size))}
+                onClick={() => setFontSize(size)}
               >
                 {size}
               </Button>
@@ -75,7 +71,7 @@ export function GeneralSettings() {
                 variant={language === lang.value ? "default" : "outline"}
                 size="sm"
                 className="text-xs"
-                onClick={() => dispatch(setLanguage(lang.value))}
+                onClick={() => setLanguage(lang.value)}
               >
                 {lang.label}
               </Button>

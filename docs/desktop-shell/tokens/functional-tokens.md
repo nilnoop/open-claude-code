@@ -1,3 +1,15 @@
+---
+title: Desktop Shell Functional Tokens
+doc_type: token
+status: active
+owner: desktop-shell
+last_verified: 2026-04-06
+source_of_truth: true
+related:
+  - docs/desktop-shell/README.md
+  - docs/desktop-shell/operations/README.md
+---
+
 # Warwolf Desktop 功能设计 Token 规范
 
 > 基于 Claude Code v2.1.88 源码逆向提取
